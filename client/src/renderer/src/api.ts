@@ -1,4 +1,5 @@
 import type {
+  AdminSettings,
   BuildStartResponse,
   BuildStatusResponse,
   CreateIssueRequest,
@@ -117,6 +118,17 @@ export async function markRoomRead(roomId: number, lastMessageId: number): Promi
 
 export async function fetchIntegrations(): Promise<IntegrationsInfo> {
   return request<IntegrationsInfo>("/api/integrations");
+}
+
+export async function fetchAdminSettings(): Promise<AdminSettings> {
+  return request<AdminSettings>("/api/admin/settings");
+}
+
+export async function saveAdminSettings(settings: Partial<AdminSettings>): Promise<void> {
+  await request<{ ok: boolean }>("/api/admin/settings", {
+    method: "PUT",
+    body: JSON.stringify(settings),
+  });
 }
 
 /** Yona 이슈 조회 — 결과 카드는 서버가 방에 브로드캐스트 (FR-35) */

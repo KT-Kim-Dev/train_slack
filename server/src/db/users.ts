@@ -1,5 +1,6 @@
 import type { PublicUser } from "@intra-chat/shared";
 import { db } from "./index.js";
+import { config } from "../config.js";
 
 /** users 테이블의 원시 행 형태 */
 export interface UserRow {
@@ -20,6 +21,7 @@ export function toPublicUser(row: UserRow): PublicUser {
     displayName: row.display_name,
     isOnline: row.is_online === 1,
     lastSeen: row.last_seen,
+    isAdmin: config.adminUsernames.includes(row.username),
   };
 }
 

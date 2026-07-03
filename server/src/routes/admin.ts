@@ -1,9 +1,11 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
+import type { AdminSettings } from "@intra-chat/shared";
 import type { AuthedRequest } from "../auth/middleware.js";
 import { requireAuth } from "../auth/middleware.js";
 import { config } from "../config.js";
+import { getSettings, updateSettings } from "../db/settings.js";
 import {
   createUser,
   deleteUser,
@@ -80,6 +82,51 @@ adminRouter.post("/users/:id/activate", (req, res) => {
     return;
   }
   setActive(id, true);
+  res.json({ ok: true });
+});
+
+// ---------------------------------------------------------------------------
+// 연동 설정 (관리자 전용)
+// ---------------------------------------------------------------------------
+
+/** 현재 연동 설정 조회 — 토큰/비밀번호는 설정 여부만 표시하고 평문은 내려보내지 않는다 */
+adminRouter.get("/settings", (_req, res) => {
+  const s = getSettings();
+  const response: AdminSettings = {
+    ...s,
+    yona_token: s.yona_token ? "••••••••" : "",
+    jenkins_token: s.jenkins_token ? "••••••••" : "",
+  };
+  res.json(response);
+});
+
+/** 연동 설정 저장 — 마스킹 값("••••••••")은 변경하지 않는다 */
+adminRouter.put("/settings", (req, res) => {
+  const schema = z.object({
+    ollama_url: z.string().optional(),
+    ollama_model: z.string().optional(),
+    ollama_timeout_ms: z.number().int().positive().optional(),
+    ai_context_limit: z.number().int().positive().optional(),
+    yona_url: z.string().optional(),
+    yona_token: z.string().optional(),
+    yona_default_project: z.string().optional(),
+    jenkins_url: z.string().optional(),
+    jenkins_user: z.string().optional(),
+    jenkins_token: z.string().optional(),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "잘못된 설정 값입니다." });
+    return;
+  }
+
+  // 마스킹 값은 저장하지 않음 (사용자가 수정하지 않은 것)
+  const patch = { ...parsed.data };
+  if (patch.yona_token === "••••••••") delete patch.yona_token;
+  if (patch.jenkins_token === "••••••••") delete patch.jenkins_token;
+
+  updateSettings(patch);
+  logger.info("연동 설정 변경", { updatedKeys: Object.keys(patch) });
   res.json({ ok: true });
 });
 

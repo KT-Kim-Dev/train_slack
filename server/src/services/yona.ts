@@ -1,5 +1,5 @@
 import type { CreateIssueRequest } from "@intra-chat/shared";
-import { config, integrationsEnabled } from "../config.js";
+import { getSettings } from "../db/settings.js";
 import { IntegrationError } from "./ollama.js";
 
 /**
@@ -18,29 +18,30 @@ export interface YonaIssue {
   url: string | null;
 }
 
-function authHeaders(): Record<string, string> {
+function authHeaders(token: string): Record<string, string> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (config.yona.token) headers["Authorization"] = `token ${config.yona.token}`;
+  if (token) headers["Authorization"] = `token ${token}`;
   return headers;
 }
 
-function assertEnabled(): void {
-  if (!integrationsEnabled.yona()) {
-    throw new IntegrationError("Yona 연동이 설정되지 않았습니다. 서버 관리자에게 YONA_URL 설정을 요청하세요.");
+function assertEnabled(yonaUrl: string): void {
+  if (!yonaUrl) {
+    throw new IntegrationError("Yona 연동이 설정되지 않았습니다. 관리자 설정에서 Yona URL을 입력해 주세요.");
   }
 }
 
 /** 이슈 조회 (FR-35, FR-39) */
 export async function getIssue(issueId: string): Promise<YonaIssue> {
-  assertEnabled();
-  const project = config.yona.defaultProject;
+  const { yona_url, yona_token, yona_default_project } = getSettings();
+  assertEnabled(yona_url);
+  const project = yona_default_project;
   const url = project
-    ? `${config.yona.baseUrl}/${project}/issues/${issueId}`
-    : `${config.yona.baseUrl}/api/issues/${issueId}`;
+    ? `${yona_url}/${project}/issues/${issueId}`
+    : `${yona_url}/api/issues/${issueId}`;
 
   let res: Response;
   try {
-    res = await fetch(url, { headers: authHeaders(), signal: AbortSignal.timeout(10000) });
+    res = await fetch(url, { headers: authHeaders(yona_token), signal: AbortSignal.timeout(10000) });
   } catch {
     throw new IntegrationError("Yona 서버에 연결할 수 없습니다.");
   }
@@ -55,17 +56,18 @@ export async function getIssue(issueId: string): Promise<YonaIssue> {
 export async function createIssue(
   payload: CreateIssueRequest
 ): Promise<{ issueId: number | string; url: string }> {
-  assertEnabled();
-  const project = payload.project || config.yona.defaultProject;
+  const { yona_url, yona_token, yona_default_project } = getSettings();
+  assertEnabled(yona_url);
+  const project = payload.project || yona_default_project;
   const url = project
-    ? `${config.yona.baseUrl}/${project}/issues`
-    : `${config.yona.baseUrl}/api/issues`;
+    ? `${yona_url}/${project}/issues`
+    : `${yona_url}/api/issues`;
 
   let res: Response;
   try {
     res = await fetch(url, {
       method: "POST",
-      headers: authHeaders(),
+      headers: authHeaders(yona_token),
       body: JSON.stringify({
         title: payload.title,
         body: payload.description ?? "",
@@ -83,7 +85,7 @@ export async function createIssue(
   const issueId = (data.number ?? data.id ?? data.issueId ?? "") as number | string;
   const issueUrl =
     (data.url as string) ??
-    (project ? `${config.yona.baseUrl}/${project}/issues/${issueId}` : `${config.yona.baseUrl}/issues/${issueId}`);
+    (project ? `${yona_url}/${project}/issues/${issueId}` : `${yona_url}/issues/${issueId}`);
   return { issueId, url: issueUrl };
 }
 

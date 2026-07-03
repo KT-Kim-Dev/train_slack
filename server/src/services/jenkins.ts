@@ -1,4 +1,4 @@
-import { config, integrationsEnabled } from "../config.js";
+import { getSettings } from "../db/settings.js";
 import { IntegrationError } from "./ollama.js";
 
 /**
@@ -6,18 +6,18 @@ import { IntegrationError } from "./ollama.js";
  * API 토큰은 서버에만 보관한다. 빌드 실행 자체의 "확인 절차"(FR-44)는 클라이언트에서 담당한다.
  */
 
-function authHeader(): Record<string, string> {
-  if (config.jenkins.user && config.jenkins.token) {
-    const basic = Buffer.from(`${config.jenkins.user}:${config.jenkins.token}`).toString("base64");
+function makeAuthHeader(user: string, token: string): Record<string, string> {
+  if (user && token) {
+    const basic = Buffer.from(`${user}:${token}`).toString("base64");
     return { Authorization: `Basic ${basic}` };
   }
   return {};
 }
 
-function assertEnabled(): void {
-  if (!integrationsEnabled.jenkins()) {
+function assertEnabled(jenkinsUrl: string): void {
+  if (!jenkinsUrl) {
     throw new IntegrationError(
-      "Jenkins 연동이 설정되지 않았습니다. 서버 관리자에게 JENKINS_URL 설정을 요청하세요."
+      "Jenkins 연동이 설정되지 않았습니다. 관리자 설정에서 Jenkins URL을 입력해 주세요."
     );
   }
 }
@@ -26,12 +26,15 @@ function assertEnabled(): void {
 export async function startBuild(
   project: string
 ): Promise<{ buildNumber: number | null; queuedAt: string | null }> {
-  assertEnabled();
+  const { jenkins_url, jenkins_user, jenkins_token } = getSettings();
+  assertEnabled(jenkins_url);
+  const authHeader = makeAuthHeader(jenkins_user, jenkins_token);
+
   let res: Response;
   try {
-    res = await fetch(`${config.jenkins.baseUrl}/job/${encodeURIComponent(project)}/build`, {
+    res = await fetch(`${jenkins_url}/job/${encodeURIComponent(project)}/build`, {
       method: "POST",
-      headers: authHeader(),
+      headers: authHeader,
       signal: AbortSignal.timeout(10000),
     });
   } catch {
@@ -42,12 +45,11 @@ export async function startBuild(
     throw new IntegrationError(`Jenkins 빌드 실행 오류 (HTTP ${res.status}).`);
   }
 
-  // 다음 빌드 번호 추정 (nextBuildNumber). 실패해도 치명적이지 않음.
   let buildNumber: number | null = null;
   try {
     const info = await fetch(
-      `${config.jenkins.baseUrl}/job/${encodeURIComponent(project)}/api/json`,
-      { headers: authHeader(), signal: AbortSignal.timeout(8000) }
+      `${jenkins_url}/job/${encodeURIComponent(project)}/api/json`,
+      { headers: authHeader, signal: AbortSignal.timeout(8000) }
     );
     if (info.ok) {
       const data = (await info.json()) as { nextBuildNumber?: number };
@@ -63,12 +65,15 @@ export async function startBuild(
 export async function getStatus(
   project: string
 ): Promise<{ status: string; durationSec: number | null; logUrl: string | null }> {
-  assertEnabled();
+  const { jenkins_url, jenkins_user, jenkins_token } = getSettings();
+  assertEnabled(jenkins_url);
+  const authHeader = makeAuthHeader(jenkins_user, jenkins_token);
+
   let res: Response;
   try {
     res = await fetch(
-      `${config.jenkins.baseUrl}/job/${encodeURIComponent(project)}/lastBuild/api/json`,
-      { headers: authHeader(), signal: AbortSignal.timeout(10000) }
+      `${jenkins_url}/job/${encodeURIComponent(project)}/lastBuild/api/json`,
+      { headers: authHeader, signal: AbortSignal.timeout(10000) }
     );
   } catch {
     throw new IntegrationError("Jenkins 서버에 연결할 수 없습니다.");

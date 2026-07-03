@@ -552,6 +552,112 @@ body {
   gap: 8px;
 }
 
+/* ---------- 관리자 설정 모달 ---------- */
+.settings-modal {
+  width: 540px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+.settings-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.settings-modal-header h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.modal-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+.modal-close:hover { background: var(--bg-hover); color: var(--text-primary); }
+.settings-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+.settings-tabs button {
+  background: none;
+  border: none;
+  padding: 8px 14px;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 13px;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.settings-tabs button.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent);
+}
+.settings-tabs button:hover:not(.active) { color: var(--text-primary); }
+.settings-body {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.settings-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0 0 4px;
+}
+.settings-desc code {
+  background: var(--bg-input);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 11px;
+}
+.field-hint {
+  color: var(--text-muted);
+  font-weight: 400;
+  font-size: 11px;
+}
+.settings-loading {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-muted);
+}
+.settings-saved {
+  color: var(--online);
+  font-size: 13px;
+  padding: 6px 0;
+}
+/* 사이드바 푸터 */
+.footer-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.btn-settings {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.btn-settings:hover { background: var(--bg-hover); color: var(--text-primary); }
+.admin-badge {
+  margin-left: 4px;
+  color: var(--accent);
+  font-size: 12px;
+  cursor: default;
+}
+
 /* ---------- AI / 명령어 / 카드 ---------- */
 .message.ai .message-avatar {
   background: #10a37f;

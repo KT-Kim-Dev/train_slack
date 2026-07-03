@@ -92,6 +92,13 @@ CREATE TABLE IF NOT EXISTS build_history (
 CREATE INDEX IF NOT EXISTS idx_messages_room_created ON messages (room_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_room_members_user ON room_members (user_id);
 CREATE INDEX IF NOT EXISTS idx_command_logs_created ON command_logs (created_at);
+
+-- 신규(v3): 관리자 UI에서 수정 가능한 통합 연동 설정 (서버 재시작 없이 즉시 반영)
+CREATE TABLE IF NOT EXISTS settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
 `;
 
 /** AI 메시지의 발신자로 사용할 시스템 계정 username */

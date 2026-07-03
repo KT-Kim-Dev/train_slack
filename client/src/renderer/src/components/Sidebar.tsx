@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { PublicUser, Room } from "@intra-chat/shared";
 import { createDm, leaveRoom } from "../api";
 import { NewRoomModal } from "./NewRoomModal";
+import { AdminSettingsModal } from "./AdminSettingsModal";
 
 interface Props {
   rooms: Room[];
@@ -26,6 +27,7 @@ export function Sidebar({
 }: Props): JSX.Element {
   const [modalType, setModalType] = useState<"channel" | "group" | null>(null);
   const [showDmPicker, setShowDmPicker] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   const channels = useMemo(() => rooms.filter((r) => r.type === "channel"), [rooms]);
   const groups = useMemo(() => rooms.filter((r) => r.type === "group"), [rooms]);
@@ -122,11 +124,25 @@ export function Sidebar({
         <div className="me">
           <span className="presence-dot online" />
           <span className="me-name">{currentUser.displayName}</span>
+          {currentUser.isAdmin && (
+            <span className="admin-badge" title="관리자">⚙</span>
+          )}
         </div>
-        <button className="btn-logout" onClick={onLogout}>
-          로그아웃
-        </button>
+        <div className="footer-actions">
+          {currentUser.isAdmin && (
+            <button className="btn-settings" title="연동 설정" onClick={() => setShowSettings(true)}>
+              설정
+            </button>
+          )}
+          <button className="btn-logout" onClick={onLogout}>
+            로그아웃
+          </button>
+        </div>
       </div>
+
+      {showSettings && (
+        <AdminSettingsModal onClose={() => setShowSettings(false)} />
+      )}
 
       {modalType && (
         <NewRoomModal

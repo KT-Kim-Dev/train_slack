@@ -18,6 +18,23 @@ export interface PublicUser {
   displayName: string;
   isOnline: boolean;
   lastSeen: string | null;
+  isAdmin: boolean;
+}
+
+/** 관리자 UI에서 편집하는 통합 연동 설정 */
+export interface AdminSettings {
+  ollama_url: string;
+  ollama_model: string;
+  ollama_timeout_ms: number;
+  ai_context_limit: number;
+  yona_url: string;
+  /** 조회/수정 요청 시 서버가 비워서 응답 — 클라이언트에 평문 노출 방지 */
+  yona_token: string;
+  yona_default_project: string;
+  jenkins_url: string;
+  jenkins_user: string;
+  /** 조회/수정 요청 시 서버가 비워서 응답 — 클라이언트에 평문 노출 방지 */
+  jenkins_token: string;
 }
 
 export interface Room {

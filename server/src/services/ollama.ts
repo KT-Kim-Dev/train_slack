@@ -1,4 +1,4 @@
-import { config, integrationsEnabled } from "../config.js";
+import { getSettings } from "../db/settings.js";
 
 /**
  * Ollama(OpenAI 호환 API) 연동 서비스.
@@ -14,9 +14,10 @@ interface ChatMessage {
 
 /** 서버에 설치된 모델 목록 조회 (FR-33) */
 export async function listModels(): Promise<string[]> {
-  if (!integrationsEnabled.ai()) return [];
+  const { ollama_url } = getSettings();
+  if (!ollama_url) return [];
   try {
-    const res = await fetch(`${config.ai.baseUrl}/api/tags`, {
+    const res = await fetch(`${ollama_url}/api/tags`, {
       signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) return [];
@@ -37,18 +38,19 @@ export async function chatStream(params: {
   model?: string;
   onDelta: (delta: string) => void;
 }): Promise<string> {
-  if (!integrationsEnabled.ai()) {
-    throw new IntegrationError("AI 기능이 설정되지 않았습니다. 서버 관리자에게 OLLAMA_URL 설정을 요청하세요.");
+  const settings = getSettings();
+  if (!settings.ollama_url) {
+    throw new IntegrationError("AI 기능이 설정되지 않았습니다. 관리자 설정에서 Ollama URL을 입력해 주세요.");
   }
-  const model = params.model || config.ai.defaultModel;
+  const model = params.model || settings.ollama_model;
 
   let res: Response;
   try {
-    res = await fetch(`${config.ai.baseUrl}/v1/chat/completions`, {
+    res = await fetch(`${settings.ollama_url}/v1/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ model, messages: params.messages, stream: true }),
-      signal: AbortSignal.timeout(config.ai.timeoutMs),
+      signal: AbortSignal.timeout(settings.ollama_timeout_ms),
     });
   } catch (err) {
     if (err instanceof Error && err.name === "TimeoutError") {
