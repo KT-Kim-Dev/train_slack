@@ -106,9 +106,79 @@ export const AI_USERNAME = "__ai__";
 
 export function initDb(): void {
   db.exec(SCHEMA);
+  runMigrations();
   ensureDefaultChannel();
   ensureAiUser();
   logger.info("데이터베이스 초기화 완료", { dbPath: config.dbPath });
+}
+
+/**
+ * 기존 DB의 CHECK 제약·컬럼 변경을 SQLite의 12-step 방식으로 처리한다.
+ * CREATE TABLE IF NOT EXISTS 는 이미 존재하는 테이블의 스키마를 바꾸지 않으므로,
+ * 이 함수에서 필요한 마이그레이션만 멱등하게 실행한다.
+ */
+function runMigrations(): void {
+  // ----- rooms: type CHECK 에 'ai' 추가 -----
+  const roomsDef: string = (
+    db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='rooms'").get() as
+      | { sql: string }
+      | undefined
+  )?.sql ?? "";
+  if (roomsDef && !roomsDef.includes("'ai'")) {
+    logger.info("DB 마이그레이션: rooms.type 에 ai 추가");
+    db.exec(`
+      PRAGMA foreign_keys = OFF;
+      BEGIN;
+      CREATE TABLE rooms_v3 (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        name       TEXT NOT NULL,
+        type       TEXT NOT NULL CHECK (type IN ('channel','group','dm','ai')),
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      );
+      INSERT INTO rooms_v3 SELECT * FROM rooms;
+      DROP TABLE rooms;
+      ALTER TABLE rooms_v3 RENAME TO rooms;
+      COMMIT;
+      PRAGMA foreign_keys = ON;
+    `);
+  }
+
+  // ----- messages: message_type CHECK 에 'ai_response'|'card' 추가 + metadata 컬럼 -----
+  const msgDef: string = (
+    db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='messages'").get() as
+      | { sql: string }
+      | undefined
+  )?.sql ?? "";
+  const needsTypeUpdate = msgDef && !msgDef.includes("'ai_response'");
+  const hasMetadata = msgDef && msgDef.includes("metadata");
+
+  if (needsTypeUpdate || !hasMetadata) {
+    logger.info("DB 마이그레이션: messages.message_type 확장 + metadata 컬럼 추가");
+    db.exec(`
+      PRAGMA foreign_keys = OFF;
+      BEGIN;
+      CREATE TABLE messages_v3 (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        room_id      INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+        sender_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE SET NULL,
+        message_type TEXT NOT NULL DEFAULT 'text' CHECK (message_type IN ('text','file','image','ai_response','card')),
+        content      TEXT,
+        file_name    TEXT,
+        file_path    TEXT,
+        file_size    INTEGER,
+        metadata     TEXT,
+        created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      );
+      INSERT INTO messages_v3 (id, room_id, sender_id, message_type, content, file_name, file_path, file_size, created_at)
+        SELECT id, room_id, sender_id, message_type, content, file_name, file_path, file_size, created_at FROM messages;
+      DROP TABLE messages;
+      ALTER TABLE messages_v3 RENAME TO messages;
+      CREATE INDEX IF NOT EXISTS idx_messages_room_created ON messages (room_id, created_at);
+      COMMIT;
+      PRAGMA foreign_keys = ON;
+    `);
+  }
 }
 
 /**
