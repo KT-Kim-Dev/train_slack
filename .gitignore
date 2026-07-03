@@ -1,0 +1,35 @@
+# 의존성
+node_modules/
+
+# 빌드 산출물
+dist/
+out/
+build/
+release/
+*.tsbuildinfo
+
+# 런타임 로그 (별도 보관, 저장소에는 포함하지 않음)
+logs/
+*.log
+
+# SQLite 데이터베이스 파일
+data/
+*.sqlite
+*.sqlite3
+*.db
+
+# 업로드된 파일 (개발용 로컬 저장소)
+uploads/
+
+# 환경 변수
+.env
+.env.local
+
+# 임시 검증 산출물
+.tmp/
+
+# OS / 에디터
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
