@@ -1,17 +1,28 @@
 appId: com.intrachat.app
 productName: Intra-Chat
-# electron-vite 빌드 산출물(out/)만 패키징한다. 렌더러/메인/프리로드는 이미 번들링되어 있음.
+
+# electron-vite 빌드 산출물(out/)만 패키징
 directories:
   output: release
   buildResources: build
+
 files:
   - out/**/*
   - package.json
-# 명세 8장: 단일 실행파일(portable exe) 형태로 공유폴더 배포
+
+# Windows 빌드 — portable exe (설치 불필요, 공유폴더에서 바로 실행)
 win:
   target:
-    - portable
+    - target: portable
+      arch:
+        - x64
+  # build/icon.ico 가 있으면 자동 사용 (없으면 기본 Electron 아이콘)
+  icon: build/icon.ico
+
 portable:
   artifactName: Intra-Chat-${version}-portable.exe
-# 인트라넷/오프라인 환경이므로 자동 업데이트/코드사인 생략
+
+# 인트라넷/오프라인 환경 — 자동 업데이트/코드사인 생략
 publish: null
+asar: true
+compression: maximum

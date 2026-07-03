@@ -4,9 +4,11 @@ node_modules/
 # 빌드 산출물
 dist/
 out/
-build/
 release/
 *.tsbuildinfo
+# client/build/ 는 electron-builder 리소스(아이콘 등) 포함 — 추적 대상
+# 서버/기타 build/ 디렉터리는 제외
+server/build/
 
 # 런타임 로그 (별도 보관, 저장소에는 포함하지 않음)
 logs/
