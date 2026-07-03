@@ -83,4 +83,59 @@
 
 ### 기술 메모
 - 외부 REST 호출은 추가 의존성 없이 내장 `fetch` 사용(명세의 axios 대체, 동일 목적)
-- DB 스키마 CHECK/컬럼 변경은 기존 DB에 자동 반영되지 않으므로, 기존 개발 DB가 있으면 삭제 후 재생성 필요
+- DB 스키마 CHECK/컬럼 변경은 기존 DB에 자동 반영되지 않으므로, 이후 `runMigrations()`로 처리
+
+---
+
+## 2026-07-03 오후 — 관리자 설정 UI, exe 배포, 마이그레이션 버그 수정
+
+### 관리자 연동 설정 UI
+**배경**: `.env` 파일 직접 편집 없이 UI에서 Ollama/Yona/Jenkins 설정 변경 필요
+
+**구현**:
+- `settings` DB 테이블 (key-value, env 폴백) + `getSettings()`/`updateSettings()`
+- `GET/PUT /api/admin/settings` — 관리자 전용, 토큰은 `••••••••` 마스킹 응답
+- 세 서비스가 정적 `config` 대신 `getSettings()` 호출 → **서버 재시작 없이 즉시 반영**
+- `AdminSettingsModal` 컴포넌트: AI / Yona / Jenkins 탭
+- `PublicUser.isAdmin` 추가, 관리자 로그인 시 사이드바 하단에 설정 버튼 노출
+
+### exe 배포 빌드
+**명령어**: `npm run package:win -w client`  
+**산출물**: `client/release/Intra-Chat-0.1.0-portable.exe` (76 MB, 설치 불필요, x64)  
+**수정 사항**:
+- `client/package.json`: electron 버전 고정 (`^33.3.1` → `33.4.11`) — electron-builder 버전 감지 요구사항
+- `electron-builder.yml`: 유효하지 않은 필드 제거, x64 명시, asar/compression 추가
+- `client/.env`: 개발용 기본값 (localhost:3000)
+- `client/.env.production.example`: 배포 시 서버 IP 설정 안내
+- `client/build/README.md`: icon.ico 적용 방법 안내
+- `.gitignore`: `client/build/` 추적 대상으로, 빌드 exe(`release/`)는 제외 유지
+
+**배포 절차**:
+1. `client/.env.production.example` → `client/.env.production` 복사 후 서버 IP 입력
+2. `npm run package:win -w client` 실행 (macOS에서도 Windows exe 생성 가능)
+3. `client/release/Intra-Chat-*.exe` 공유폴더 업로드
+
+### 버그 수정: "Failed to fetch" — DB CHECK 제약 충돌
+**원인**: `CREATE TABLE IF NOT EXISTS`는 이미 존재하는 테이블 스키마를 갱신하지 않음.  
+구버전 DB의 `rooms.type CHECK('channel','group','dm')`에 `'ai'` 삽입 시 SqliteError 발생.
+
+**수정**: `db/index.ts`에 `runMigrations()` 추가 — 서버 시작 시 자동 실행  
+- sqlite_master에서 실제 CREATE 문을 조회해 마이그레이션 필요 여부 판단 (멱등 보장)
+- `rooms`: `'ai'` 타입 추가 (12-step 재생성)
+- `messages`: `'ai_response'`·`'card'` 타입 + `metadata TEXT` 컬럼 추가 (12-step 재생성)
+
+### 테스트 계정
+| 아이디 | 비밀번호 | 비고 |
+|---|---|---|
+| `admin` | `admin1234` | 관리자 (`ADMIN_USERNAMES=admin`) — 설정 버튼 노출 |
+| `testuser` | `test1234` | 일반 사용자 |
+
+### 커밋 이력 (이번 세션)
+| 해시 | 내용 |
+|---|---|
+| `8536442` | feat: Intra-Chat PoC 초기 구현 |
+| `851665b` | feat: v3 업무 연동 기능 추가 (AI/Yona/Jenkins) |
+| `f100e0d` | fix: 카드/AI 응답 발신자를 명령 실행 사용자로 변경 |
+| `54dfa62` | feat: 관리자 연동 설정 UI 추가 |
+| `65ccbfa` | build: Windows portable exe 빌드 설정 완성 |
+| `77354c8` | fix: 기존 DB 스키마 자동 마이그레이션 추가 |
