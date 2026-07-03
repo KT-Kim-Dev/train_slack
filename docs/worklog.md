@@ -49,3 +49,38 @@
 ### Phase 5 - 패키징/배포
 - `client/electron-builder.yml`: Windows portable exe 빌드 설정
 - 루트 `README.md`: 실행/계정발급/패키징/오프라인 반입/운영 가이드 작성
+
+## 2026-07-03 (v3.0 - 업무 연동 기능 추가)
+
+요구사항 명세서 v3.0 반영: AI 채팅(Ollama), Yona 이슈, Jenkins 빌드 연동.
+
+### 데이터 모델 확장
+- `rooms.type`에 `'ai'`, `messages.message_type`에 `'ai_response'|'card'`, `messages.metadata`(카드 JSON) 추가
+- 신규 테이블: `ai_sessions`, `command_logs`, `build_history`(room_id 포함)
+- AI 시스템 계정(`__ai__`) 시딩, 로그인 시 사용자별 AI 채팅방 자동 생성
+
+### 서버 (서비스 레이어 분리)
+- `services/ollama.ts`: OpenAI 호환 스트리밍 채팅 + 모델 목록, 타임아웃/연결 오류 처리 (FR-29,30,33,34)
+- `services/yona.ts`: 이슈 조회/생성, 필드 정규화 (FR-35~39)
+- `services/jenkins.ts`: 빌드 실행/상태 조회, Basic 인증 (FR-40,43,45)
+- 소켓 `ai:ask`/`ai:delta` 스트리밍, 컨텍스트 유지(FR-31), 응답 DB 저장(FR-32)
+- 라우트: `/api/yona/*`, `/api/jenkins/*`(+웹훅 FR-42), `/api/integrations`
+- 연동 실패/미설정 시 채팅 핵심 기능 무영향(서비스 분리) + 명확한 오류(502)
+- `command_logs`로 명령어 실행 이력 기록(NFR 로그)
+
+### 클라이언트
+- 명령어 파서(`/ai`,`@ai`,`/issue`,`/issue create`,`/build`,`/build status`)
+- AI 채팅방 전용 섹션/입력 처리 + 스트리밍 델타 실시간 표시(FR-30)
+- 이슈/빌드 카드 렌더(`MessageItem`), 이슈 생성 모달, 빌드 실행 확인 모달(FR-44)
+- 연동 활성화 정보(`/api/integrations`)로 비활성 기능 안내
+
+### 검증 (헤드리스)
+- 채팅 회귀(텍스트 실시간 송수신) 정상
+- 로그인 시 AI 채팅방 자동 생성, 연동 미설정 시 모두 비활성 보고
+- AI 미설정 시 오류 델타로 정상 종료, Yona/Jenkins 미설정 시 502
+- command_logs 기록 확인
+- 가짜 Ollama(OpenAI 호환 SSE) 서버로 스트리밍 delta 누적/DB 저장 정상 확인
+
+### 기술 메모
+- 외부 REST 호출은 추가 의존성 없이 내장 `fetch` 사용(명세의 axios 대체, 동일 목적)
+- DB 스키마 CHECK/컬럼 변경은 기존 DB에 자동 반영되지 않으므로, 기존 개발 DB가 있으면 삭제 후 재생성 필요

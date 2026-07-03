@@ -32,6 +32,32 @@ export const config = {
     .split(",")
     .map((u) => u.trim())
     .filter(Boolean),
+
+  // ------ v3: 업무 연동 설정 (모두 인트라넷 내부 주소, 없으면 해당 기능 비활성화) ------
+  ai: {
+    // Ollama OpenAI 호환 엔드포인트 (예: http://localhost:11434)
+    baseUrl: (process.env.OLLAMA_URL ?? "").trim(),
+    defaultModel: (process.env.OLLAMA_MODEL ?? "llama3").trim(),
+    timeoutMs: Number(process.env.OLLAMA_TIMEOUT_MS ?? 60000),
+    contextLimit: Number(process.env.AI_CONTEXT_LIMIT ?? 10),
+  },
+  yona: {
+    baseUrl: (process.env.YONA_URL ?? "").trim(),
+    token: (process.env.YONA_TOKEN ?? "").trim(),
+    defaultProject: (process.env.YONA_DEFAULT_PROJECT ?? "").trim(),
+  },
+  jenkins: {
+    baseUrl: (process.env.JENKINS_URL ?? "").trim(),
+    user: (process.env.JENKINS_USER ?? "").trim(),
+    token: (process.env.JENKINS_TOKEN ?? "").trim(),
+  },
+};
+
+/** 각 연동 기능의 활성화 여부 (필수 설정이 존재할 때만 true) */
+export const integrationsEnabled = {
+  ai: () => config.ai.baseUrl.length > 0,
+  yona: () => config.yona.baseUrl.length > 0,
+  jenkins: () => config.jenkins.baseUrl.length > 0,
 };
 
 // 데이터베이스 파일이 위치할 디렉터리도 미리 생성

@@ -5,6 +5,8 @@ import type { LoginResponse } from "@intra-chat/shared";
 import { getUserByUsername, toPublicUser } from "../db/users.js";
 import { addMember } from "../db/rooms.js";
 import { getDefaultChannelId } from "../db/index.js";
+import { ensureAiRoom } from "../db/integrations.js";
+import { config } from "../config.js";
 import { signToken } from "../auth/jwt.js";
 import { logger } from "../logger.js";
 
@@ -36,8 +38,9 @@ authRouter.post("/login", async (req, res) => {
     return;
   }
 
-  // 수직 슬라이스 단계: 로그인 사용자를 기본 공개 채널에 자동 합류시킨다.
+  // 로그인 사용자를 기본 공개 채널에 자동 합류시키고, AI 전용 채팅방을 보장한다 (FR-27).
   addMember(getDefaultChannelId(), user.id);
+  ensureAiRoom(user.id, config.ai.defaultModel);
 
   const token = signToken({ userId: user.id, username: user.username });
   logger.info("로그인 성공", { userId: user.id, username: user.username });

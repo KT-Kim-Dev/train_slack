@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS rooms (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   name       TEXT NOT NULL,
-  type       TEXT NOT NULL CHECK (type IN ('channel','group','dm')),
+  type       TEXT NOT NULL CHECK (type IN ('channel','group','dm','ai')),
   created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
@@ -47,22 +47,82 @@ CREATE TABLE IF NOT EXISTS messages (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   room_id      INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
   sender_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE SET NULL,
-  message_type TEXT NOT NULL DEFAULT 'text' CHECK (message_type IN ('text','file','image')),
+  message_type TEXT NOT NULL DEFAULT 'text' CHECK (message_type IN ('text','file','image','ai_response','card')),
   content      TEXT,
   file_name    TEXT,
   file_path    TEXT,
   file_size    INTEGER,
+  metadata     TEXT,
   created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+-- 신규(v3): AI 채팅 세션
+CREATE TABLE IF NOT EXISTS ai_sessions (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  room_id    INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+  model_name TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+-- 신규(v3): 명령어 실행 로그 (Yona/Jenkins/AI 공통, 문제 추적용)
+CREATE TABLE IF NOT EXISTS command_logs (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  command    TEXT NOT NULL,
+  parameter  TEXT,
+  success    INTEGER NOT NULL DEFAULT 0,
+  elapsed_ms INTEGER,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+-- 신규(v3): Jenkins 빌드 이력
+CREATE TABLE IF NOT EXISTS build_history (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  project      TEXT NOT NULL,
+  build_number INTEGER,
+  status       TEXT,
+  duration_sec INTEGER,
+  started_at   TEXT,
+  finished_at  TEXT,
+  triggered_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  room_id      INTEGER REFERENCES rooms(id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_room_created ON messages (room_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_room_members_user ON room_members (user_id);
+CREATE INDEX IF NOT EXISTS idx_command_logs_created ON command_logs (created_at);
 `;
+
+/** AI 메시지의 발신자로 사용할 시스템 계정 username */
+export const AI_USERNAME = "__ai__";
 
 export function initDb(): void {
   db.exec(SCHEMA);
   ensureDefaultChannel();
+  ensureAiUser();
   logger.info("데이터베이스 초기화 완료", { dbPath: config.dbPath });
+}
+
+/**
+ * AI 응답 메시지의 발신자로 쓸 시스템 계정을 보장한다.
+ * 로그인 불가한 계정(사용 불가능한 해시)으로 생성한다.
+ */
+function ensureAiUser(): void {
+  const existing = db.prepare("SELECT id FROM users WHERE username = ?").get(AI_USERNAME);
+  if (!existing) {
+    db.prepare(
+      "INSERT INTO users (username, password_hash, display_name, is_active) VALUES (?, '!', ?, 0)"
+    ).run(AI_USERNAME, "AI 어시스턴트");
+    logger.info("AI 시스템 계정 생성");
+  }
+}
+
+export function getAiUserId(): number {
+  const row = db.prepare("SELECT id FROM users WHERE username = ?").get(AI_USERNAME) as {
+    id: number;
+  };
+  return row.id;
 }
 
 /**

@@ -8,8 +8,8 @@
 // 도메인 엔티티
 // ---------------------------------------------------------------------------
 
-export type RoomType = "channel" | "group" | "dm";
-export type MessageType = "text" | "file" | "image";
+export type RoomType = "channel" | "group" | "dm" | "ai";
+export type MessageType = "text" | "file" | "image" | "ai_response" | "card";
 
 /** 다른 사용자에게 노출 가능한 사용자 공개 정보 (비밀번호 해시 제외) */
 export interface PublicUser {
@@ -42,8 +42,38 @@ export interface Message {
   /** 다운로드/미리보기용 상대 경로 (예: /api/files/123) */
   fileUrl: string | null;
   fileSize: number | null;
+  /** 카드 메시지(이슈/빌드)의 구조화 데이터 (message_type='card') */
+  metadata: CardPayload | null;
   createdAt: string;
 }
+
+// ---------------------------------------------------------------------------
+// 카드 메시지 (Yona 이슈 / Jenkins 빌드)
+// ---------------------------------------------------------------------------
+
+export interface IssueCard {
+  kind: "issue";
+  issueId: number | string;
+  title: string;
+  assignee: string | null;
+  priority: string | null;
+  status: string | null;
+  dueDate: string | null;
+  url: string | null;
+}
+
+export interface BuildCard {
+  kind: "build";
+  /** started: 빌드 시작, finished: 빌드 완료, status: 상태 조회 결과 */
+  phase: "started" | "finished" | "status";
+  project: string;
+  buildNumber: number | null;
+  status: string | null;
+  durationSec: number | null;
+  logUrl: string | null;
+}
+
+export type CardPayload = IssueCard | BuildCard;
 
 // ---------------------------------------------------------------------------
 // REST API 요청/응답
@@ -71,14 +101,61 @@ export interface ApiError {
 }
 
 // ---------------------------------------------------------------------------
+// 업무 연동 REST 요청/응답 (Yona / Jenkins / AI)
+// ---------------------------------------------------------------------------
+
+export interface CreateIssueRequest {
+  roomId: number;
+  title: string;
+  description?: string;
+  assignee?: string;
+  project?: string;
+  labels?: string[];
+}
+
+export interface CreateIssueResponse {
+  issueId: number | string;
+  url: string;
+}
+
+export interface BuildStartResponse {
+  buildNumber: number | null;
+  queuedAt: string | null;
+}
+
+export interface BuildStatusResponse {
+  status: string;
+  durationSec: number | null;
+  logUrl: string | null;
+}
+
+/** 사용 가능한 Ollama 모델 목록 및 연동 활성화 여부 */
+export interface IntegrationsInfo {
+  ai: { enabled: boolean; models: string[]; defaultModel: string | null };
+  yona: { enabled: boolean };
+  jenkins: { enabled: boolean };
+}
+
+// ---------------------------------------------------------------------------
 // Socket.IO 이벤트 계약
 // ---------------------------------------------------------------------------
+
+/** AI 스트리밍 응답의 증분 이벤트 (FR-30) */
+export interface AiDeltaEvent {
+  roomId: number;
+  messageId: number;
+  delta: string;
+  done: boolean;
+  elapsedMs?: number;
+  error?: string;
+}
 
 /** 서버 -> 클라이언트 이벤트 */
 export interface ServerToClientEvents {
   "message:new": (message: Message) => void;
   "presence:update": (payload: { userId: number; isOnline: boolean; lastSeen: string | null }) => void;
   "room:created": (room: Room) => void;
+  "ai:delta": (payload: AiDeltaEvent) => void;
   "error": (payload: { message: string }) => void;
 }
 
@@ -89,6 +166,11 @@ export interface ClientToServerEvents {
   "message:send": (
     payload: { roomId: number; content: string },
     ack?: (result: { ok: boolean; message?: Message; error?: string }) => void
+  ) => void;
+  /** AI 질문 요청 (FR-28, FR-29): 서버가 질문을 저장/브로드캐스트 후 스트리밍 응답 */
+  "ai:ask": (
+    payload: { roomId: number; content: string; model?: string },
+    ack?: (result: { ok: boolean; error?: string }) => void
   ) => void;
 }
 

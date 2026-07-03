@@ -1,12 +1,14 @@
 import { useRef, useState, type DragEvent, type KeyboardEvent } from "react";
 import { uploadFiles } from "../api";
+import { COMMAND_HINTS } from "../commands";
 
 interface Props {
   roomId: number;
-  onSendText: (text: string) => Promise<void>;
+  isAiRoom: boolean;
+  onSubmit: (raw: string) => Promise<void>;
 }
 
-export function MessageInput({ roomId, onSendText }: Props): JSX.Element {
+export function MessageInput({ roomId, isAiRoom, onSubmit }: Props): JSX.Element {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -20,7 +22,7 @@ export function MessageInput({ roomId, onSendText }: Props): JSX.Element {
     setSending(true);
     setError(null);
     try {
-      await onSendText(trimmed);
+      await onSubmit(trimmed);
       setText("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "전송 실패");
@@ -97,13 +99,18 @@ export function MessageInput({ roomId, onSendText }: Props): JSX.Element {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="메시지를 입력하세요 (Enter: 전송, Shift+Enter: 줄바꿈)"
+          placeholder={
+            isAiRoom
+              ? "AI에게 질문하세요 (Enter: 전송, Shift+Enter: 줄바꿈)"
+              : "메시지 또는 명령어 입력 (Enter: 전송, Shift+Enter: 줄바꿈)"
+          }
           rows={1}
         />
         <button className="send-btn" onClick={submitText} disabled={sending || !text.trim()}>
           전송
         </button>
       </div>
+      {!isAiRoom && <div className="command-hints">명령어: {COMMAND_HINTS.join("  ·  ")}</div>}
     </div>
   );
 }

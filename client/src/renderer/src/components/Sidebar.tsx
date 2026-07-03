@@ -30,6 +30,7 @@ export function Sidebar({
   const channels = useMemo(() => rooms.filter((r) => r.type === "channel"), [rooms]);
   const groups = useMemo(() => rooms.filter((r) => r.type === "group"), [rooms]);
   const dms = useMemo(() => rooms.filter((r) => r.type === "dm"), [rooms]);
+  const aiRooms = useMemo(() => rooms.filter((r) => r.type === "ai"), [rooms]);
 
   function dmDisplayName(room: Room): string {
     // DM 방 이름 "dm:a:b" 에서 상대방 id 를 찾아 표시이름으로 변환
@@ -65,9 +66,11 @@ export function Sidebar({
           </span>
           {unread > 0 && <span className="badge">{unread}</span>}
         </button>
-        <button className="room-leave" title="나가기/숨기기" onClick={() => handleLeave(room)}>
-          ×
-        </button>
+        {room.type !== "ai" && (
+          <button className="room-leave" title="나가기/숨기기" onClick={() => handleLeave(room)}>
+            ×
+          </button>
+        )}
       </li>
     );
   }
@@ -82,6 +85,7 @@ export function Sidebar({
       </div>
 
       <div className="sidebar-scroll">
+        <Section title="AI" items={aiRooms.map((r) => renderRoomItem(r, r.name, "🤖 "))} />
         <Section
           title="채널"
           onAdd={() => setModalType("channel")}
@@ -147,15 +151,17 @@ function Section({
 }: {
   title: string;
   items: JSX.Element[];
-  onAdd: () => void;
+  onAdd?: () => void;
 }): JSX.Element {
   return (
     <div className="section">
       <div className="section-header">
         <span>{title}</span>
-        <button className="section-add" title="새로 만들기" onClick={onAdd}>
-          +
-        </button>
+        {onAdd && (
+          <button className="section-add" title="새로 만들기" onClick={onAdd}>
+            +
+          </button>
+        )}
       </div>
       <ul className="room-list">{items}</ul>
     </div>

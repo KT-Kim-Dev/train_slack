@@ -1,42 +1,58 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Message, PublicUser, Room } from "@intra-chat/shared";
-import { fetchMessages, markRoomRead } from "../api";
-import { sendMessage } from "../socket";
+import type { AiDeltaEvent, IntegrationsInfo, Message, PublicUser, Room } from "@intra-chat/shared";
+import { fetchBuildStatus, fetchIssue, fetchMessages, markRoomRead } from "../api";
+import { askAi, sendMessage } from "../socket";
+import { parseCommand } from "../commands";
 import { MessageItem } from "./MessageItem";
 import { MessageInput } from "./MessageInput";
 import { ImageLightbox } from "./ImageLightbox";
+import { IssueCreateModal } from "./IssueCreateModal";
+import { BuildConfirmModal } from "./BuildConfirmModal";
+import type { ActiveRoomHandlers } from "./ChatPage";
 
 interface Props {
   room: Room;
   currentUser: PublicUser;
-  registerActiveHandler: (handler: ((msg: Message) => void) | null) => void;
+  integrations: IntegrationsInfo | null;
+  registerActiveHandler: (handlers: ActiveRoomHandlers | null) => void;
 }
 
-export function ChatRoom({ room, currentUser, registerActiveHandler }: Props): JSX.Element {
+export function ChatRoom({ room, currentUser, integrations, registerActiveHandler }: Props): JSX.Element {
   const [messages, setMessages] = useState<Message[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [nextCursor, setNextCursor] = useState<number | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [showIssueModal, setShowIssueModal] = useState(false);
+  const [buildToConfirm, setBuildToConfirm] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  // 하단 근처에 있을 때만 새 메시지 도착 시 자동 스크롤
   const nearBottomRef = useRef(true);
 
   const appendMessage = useCallback((msg: Message) => {
-    setMessages((prev) => {
-      if (prev.some((m) => m.id === msg.id)) return prev;
-      return [...prev, msg];
-    });
+    setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
   }, []);
 
-  // 실시간 수신 핸들러 등록 (활성 방일 때 ChatPage 가 호출)
-  useEffect(() => {
-    registerActiveHandler(appendMessage);
-    return () => registerActiveHandler(null);
-  }, [registerActiveHandler, appendMessage]);
+  // AI 스트리밍 델타로 해당 메시지 내용을 갱신 (FR-30)
+  const handleAiDelta = useCallback((payload: AiDeltaEvent) => {
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== payload.messageId) return m;
+        if (payload.done) {
+          // 오류 완료면 델타(오류문구)로 대체, 정상 완료면 누적분 유지
+          return payload.error ? { ...m, content: payload.delta } : m;
+        }
+        return { ...m, content: (m.content ?? "") + payload.delta };
+      })
+    );
+    if (nearBottomRef.current) requestAnimationFrame(() => scrollToBottom("smooth"));
+  }, []);
 
-  // 방 변경 시 초기 히스토리 로딩 (FR-13)
+  useEffect(() => {
+    registerActiveHandler({ onMessage: appendMessage, onAiDelta: handleAiDelta });
+    return () => registerActiveHandler(null);
+  }, [registerActiveHandler, appendMessage, handleAiDelta]);
+
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -54,7 +70,6 @@ export function ChatRoom({ room, currentUser, registerActiveHandler }: Props): J
     };
   }, [room.id]);
 
-  // 새 메시지 도착 시 하단이면 자동 스크롤
   useEffect(() => {
     if (nearBottomRef.current) scrollToBottom("smooth");
   }, [messages]);
@@ -69,7 +84,6 @@ export function ChatRoom({ room, currentUser, registerActiveHandler }: Props): J
     if (!el) return;
     nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
 
-    // 위로 스크롤 시 이전 메시지 추가 로딩 (페이지네이션)
     if (el.scrollTop < 60 && hasMore && !loadingOlder && nextCursor) {
       setLoadingOlder(true);
       const prevHeight = el.scrollHeight;
@@ -78,7 +92,6 @@ export function ChatRoom({ room, currentUser, registerActiveHandler }: Props): J
         setMessages((prev) => [...page.messages, ...prev]);
         setHasMore(page.hasMore);
         setNextCursor(page.nextCursor);
-        // 스크롤 위치 보정 (새로 추가된 높이만큼)
         requestAnimationFrame(() => {
           const newEl = scrollRef.current;
           if (newEl) newEl.scrollTop = newEl.scrollHeight - prevHeight;
@@ -89,14 +102,69 @@ export function ChatRoom({ room, currentUser, registerActiveHandler }: Props): J
     }
   }
 
-  async function handleSendText(text: string): Promise<void> {
-    // 서버 브로드캐스트(message:new)로 목록에 반영되므로 여기서는 전송만 수행
-    await sendMessage(room.id, text);
+  /**
+   * 입력 전송 처리: 명령어를 파싱해 채팅/AI/Yona/Jenkins 로 라우팅한다.
+   * 오류는 throw 하여 입력창에 표시된다.
+   */
+  async function handleSubmit(raw: string): Promise<void> {
     nearBottomRef.current = true;
+    const parsed = parseCommand(raw);
+
+    // AI 전용 채팅방에서는 일반 텍스트도 AI 질문으로 처리
+    if (parsed.type === "text" && room.type === "ai") {
+      await ensureAiEnabled();
+      await askAi(room.id, parsed.text);
+      return;
+    }
+
+    switch (parsed.type) {
+      case "text":
+        await sendMessage(room.id, parsed.text);
+        return;
+      case "ai":
+        await ensureAiEnabled();
+        await askAi(room.id, parsed.text);
+        return;
+      case "issue-view":
+        ensureEnabled("yona", "Yona");
+        await fetchIssue(parsed.issueId, room.id);
+        return;
+      case "issue-create":
+        ensureEnabled("yona", "Yona");
+        setShowIssueModal(true);
+        return;
+      case "build-status":
+        ensureEnabled("jenkins", "Jenkins");
+        await fetchBuildStatus(parsed.project, room.id);
+        return;
+      case "build-run":
+        ensureEnabled("jenkins", "Jenkins");
+        setBuildToConfirm(parsed.project); // FR-44: 실행 전 확인 모달
+        return;
+      case "error":
+        throw new Error(parsed.message);
+    }
+  }
+
+  function ensureEnabled(key: "yona" | "jenkins", label: string): void {
+    if (integrations && !integrations[key].enabled) {
+      throw new Error(`${label} 연동이 비활성화되어 있습니다. 서버 관리자에게 문의하세요.`);
+    }
+  }
+  async function ensureAiEnabled(): Promise<void> {
+    if (integrations && !integrations.ai.enabled) {
+      throw new Error("AI 기능이 비활성화되어 있습니다. 서버 관리자에게 문의하세요.");
+    }
   }
 
   const roomTitle =
-    room.type === "channel" ? `# ${room.name}` : room.type === "group" ? `◆ ${room.name}` : `@ 대화`;
+    room.type === "channel"
+      ? `# ${room.name}`
+      : room.type === "group"
+        ? `◆ ${room.name}`
+        : room.type === "ai"
+          ? "🤖 AI 어시스턴트"
+          : "@ 대화";
 
   return (
     <section className="chat-room">
@@ -106,9 +174,7 @@ export function ChatRoom({ room, currentUser, registerActiveHandler }: Props): J
 
       <div className="messages" ref={scrollRef} onScroll={handleScroll}>
         {loadingOlder && <div className="loading-older">이전 메시지 불러오는 중...</div>}
-        {!hasMore && messages.length > 0 && (
-          <div className="history-start">— 대화의 시작입니다 —</div>
-        )}
+        {!hasMore && messages.length > 0 && <div className="history-start">— 대화의 시작입니다 —</div>}
         {messages.map((m) => (
           <MessageItem
             key={m.id}
@@ -118,13 +184,34 @@ export function ChatRoom({ room, currentUser, registerActiveHandler }: Props): J
           />
         ))}
         {messages.length === 0 && (
-          <div className="empty-messages">아직 메시지가 없습니다. 첫 메시지를 보내보세요!</div>
+          <div className="empty-messages">
+            {room.type === "ai"
+              ? "AI에게 무엇이든 물어보세요."
+              : "아직 메시지가 없습니다. 첫 메시지를 보내보세요!"}
+          </div>
         )}
       </div>
 
-      <MessageInput roomId={room.id} onSendText={handleSendText} />
+      <MessageInput
+        roomId={room.id}
+        isAiRoom={room.type === "ai"}
+        onSubmit={handleSubmit}
+      />
 
       {lightboxUrl && <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />}
+      {showIssueModal && (
+        <IssueCreateModal
+          roomId={room.id}
+          onClose={() => setShowIssueModal(false)}
+        />
+      )}
+      {buildToConfirm && (
+        <BuildConfirmModal
+          project={buildToConfirm}
+          roomId={room.id}
+          onClose={() => setBuildToConfirm(null)}
+        />
+      )}
     </section>
   );
 }

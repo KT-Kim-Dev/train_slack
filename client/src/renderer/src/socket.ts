@@ -47,3 +47,14 @@ export function sendMessage(roomId: number, content: string): Promise<Message> {
 export function joinRoom(roomId: number): void {
   socket?.emit("room:join", roomId);
 }
+
+/** AI에게 질문 (FR-28, FR-29). 응답은 ai:delta 이벤트로 스트리밍된다. */
+export function askAi(roomId: number, content: string, model?: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (!socket) return reject(new Error("소켓이 연결되지 않았습니다."));
+    socket.emit("ai:ask", { roomId, content, model }, (result) => {
+      if (result.ok) resolve();
+      else reject(new Error(result.error ?? "AI 요청에 실패했습니다."));
+    });
+  });
+}

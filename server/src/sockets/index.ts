@@ -8,8 +8,17 @@ import type {
 } from "@intra-chat/shared";
 import { verifyToken } from "../auth/jwt.js";
 import { getUserById, setOnline } from "../db/users.js";
-import { insertTextMessage } from "../db/messages.js";
+import {
+  getContextMessages,
+  insertAiPlaceholder,
+  insertTextMessage,
+  setMessageContent,
+} from "../db/messages.js";
 import { getRoomIdsForUser, isMember, markRoomRead } from "../db/rooms.js";
+import { getAiUserId } from "../db/index.js";
+import { logCommand } from "../db/integrations.js";
+import { chatStream, IntegrationError } from "../services/ollama.js";
+import { config } from "../config.js";
 import { logger } from "../logger.js";
 
 interface SocketData {
@@ -112,6 +121,20 @@ export function initSocket(httpServer: HttpServer, corsOrigin: string[]): IOServ
       ack?.({ ok: true, message });
     });
 
+    socket.on("ai:ask", ({ roomId, content, model }, ack) => {
+      const trimmed = (content ?? "").trim();
+      if (!trimmed) {
+        ack?.({ ok: false, error: "질문 내용이 비어 있습니다." });
+        return;
+      }
+      if (!isMember(roomId, userId)) {
+        ack?.({ ok: false, error: "이 방의 참여자가 아닙니다." });
+        return;
+      }
+      ack?.({ ok: true });
+      void handleAiAsk(roomId, userId, trimmed, model);
+    });
+
     socket.on("disconnect", () => handleDisconnect(socket, userId, username));
   });
 
@@ -145,6 +168,84 @@ function handleDisconnect(socket: AppSocket, userId: number, username: string): 
     const lastSeen = setOnline(userId, false);
     getIo().emit("presence:update", { userId, isOnline: false, lastSeen });
     logger.info("오프라인 전환", { userId, username });
+  }
+}
+
+/**
+ * AI 질문 처리 (FR-28~34).
+ * 1) 사용자의 질문을 텍스트 메시지로 저장/브로드캐스트
+ * 2) AI 응답 자리표시자 생성 후 브로드캐스트
+ * 3) Ollama 스트리밍으로 delta 를 방에 순차 전송, 완료 시 내용 확정/저장
+ */
+async function handleAiAsk(
+  roomId: number,
+  userId: number,
+  content: string,
+  model?: string
+): Promise<void> {
+  const server = getIo();
+  const aiUserId = getAiUserId();
+
+  // 1) 질문 메시지 저장/브로드캐스트
+  const question = insertTextMessage({ roomId, senderId: userId, content });
+  markRoomRead(roomId, userId, question.id);
+  broadcastMessage(question);
+
+  // 2) AI 응답 자리표시자
+  const placeholder = insertAiPlaceholder({ roomId, aiUserId });
+  broadcastMessage(placeholder);
+
+  // 3) 컨텍스트 구성 (FR-31)
+  const history = getContextMessages(roomId, config.ai.contextLimit, aiUserId);
+  const messages = [
+    { role: "system" as const, content: "당신은 사내 업무를 돕는 한국어 AI 어시스턴트입니다. 간결하고 정확하게 답변하세요." },
+    ...history,
+  ];
+
+  const startedAt = Date.now();
+  let accumulated = "";
+  try {
+    accumulated = await chatStream({
+      messages,
+      model,
+      onDelta: (delta) => {
+        server.to(roomChannel(roomId)).emit("ai:delta", {
+          roomId,
+          messageId: placeholder.id,
+          delta,
+          done: false,
+        });
+      },
+    });
+    setMessageContent(placeholder.id, accumulated);
+    const elapsedMs = Date.now() - startedAt;
+    server.to(roomChannel(roomId)).emit("ai:delta", {
+      roomId,
+      messageId: placeholder.id,
+      delta: "",
+      done: true,
+      elapsedMs,
+    });
+    logCommand({ userId, command: "/ai", parameter: content.slice(0, 200), success: true, elapsedMs });
+  } catch (err) {
+    const errorMsg =
+      err instanceof IntegrationError ? err.message : "AI 응답 처리 중 오류가 발생했습니다.";
+    setMessageContent(placeholder.id, `⚠️ ${errorMsg}`);
+    server.to(roomChannel(roomId)).emit("ai:delta", {
+      roomId,
+      messageId: placeholder.id,
+      delta: `⚠️ ${errorMsg}`,
+      done: true,
+      error: errorMsg,
+    });
+    logCommand({
+      userId,
+      command: "/ai",
+      parameter: content.slice(0, 200),
+      success: false,
+      elapsedMs: Date.now() - startedAt,
+    });
+    logger.warn("AI 응답 실패", { roomId, userId, error: errorMsg });
   }
 }
 

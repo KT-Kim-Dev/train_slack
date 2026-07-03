@@ -6,12 +6,32 @@
 
 ## 주요 기능
 
+**[Phase 1] 채팅 핵심**
 - 관리자 발급 ID/PW 로그인 (JWT 인증, bcrypt 해시)
 - 공개 채널 / 비공개 그룹채팅 / 1:1 DM
 - 실시간 텍스트 메시지 (Socket.IO) + 히스토리 스크롤 페이지네이션
 - 파일/이미지 첨부 (드래그앤드롭, 다중 첨부, 업로드 진행률, 이미지 미리보기, 다운로드)
 - 온라인/오프라인 상태 표시, 미읽음 배지
 - 자동 로그인, Socket 자동 재연결
+
+**[Phase 2] 업무 연동 (v3)**
+- AI 채팅: 로컬 Ollama(OpenAI 호환) 연동, 스트리밍 응답, 대화 컨텍스트 유지
+- Yona 이슈: `/issue (번호)` 조회, `/issue create` 생성(카드 표시)
+- Jenkins 빌드: `/build (프로젝트)` 실행(확인창), `/build status` 조회, 웹훅 완료 알림
+- 명령어 실행 이력(`command_logs`), 빌드 이력(`build_history`) 기록
+- 연동 대상이 없거나 실패해도 채팅 핵심 기능은 정상 동작 (서비스 레이어 분리)
+
+### 채팅 명령어
+
+| 명령어 | 설명 |
+|---|---|
+| `/ai (질문)` 또는 `@ai (질문)` | AI에게 질문 (일반 채널/그룹에서도 사용 가능) |
+| `/issue (번호)` | Yona 이슈 조회 (카드 표시) |
+| `/issue create` | 이슈 생성 폼 열기 |
+| `/build (프로젝트)` | Jenkins 빌드 실행 (실행 전 확인창) |
+| `/build status (프로젝트)` | 빌드 상태 조회 |
+
+> AI 전용 채팅방("AI 어시스턴트")에서는 명령어 없이 입력하면 바로 AI 질문으로 처리됩니다.
 
 ## 프로젝트 구조
 
@@ -89,6 +109,33 @@ npm run package:win -w client # electron-builder 로 portable exe 생성 (client
 - 이 exe 를 사내 공유폴더에 업로드하여 각 사용자가 다운로드/실행합니다.
 - 배포 클라이언트가 접속할 서버 주소는 빌드 시 `VITE_SERVER_URL` 환경변수로 지정합니다.
   예: `VITE_SERVER_URL=http://192.168.0.10:3000 npm run package:win -w client`
+
+## 업무 연동 설정 (v3, 선택)
+
+`server/.env` 에 아래 값을 설정하면 각 기능이 활성화됩니다. **비워두면 해당 기능만 비활성화**되고 채팅 기능은 정상 동작합니다.
+
+```bash
+# AI 채팅 (로컬 Ollama, OpenAI 호환 API)
+OLLAMA_URL=http://localhost:11434
+OLLAMA_MODEL=llama3
+
+# Yona 이슈 관리
+YONA_URL=http://yona.internal
+YONA_TOKEN=<발급받은 토큰>
+YONA_DEFAULT_PROJECT=<기본 프로젝트>
+
+# Jenkins 빌드/CI
+JENKINS_URL=http://jenkins.internal
+JENKINS_USER=<사용자>
+JENKINS_TOKEN=<API 토큰>
+```
+
+- Ollama: 오프라인 환경에서는 인터넷 가능 PC에서 `ollama pull` 로 모델을 받아 서버에 반입/등록합니다.
+- Jenkins 완료 알림(FR-42)은 Jenkins가 `POST /api/webhooks/jenkins` 로 웹훅을 호출하도록 설정합니다.
+  (웹훅 불가 환경이면 `/build status` 폴링으로 대체)
+- Yona/Jenkins API 토큰은 서버에만 보관되며 클라이언트에 노출되지 않습니다.
+
+> 참고: 데이터 모델(스키마)이 v3에서 확장되었습니다. 기존 개발용 DB(`server/data/*.sqlite`)가 있다면 삭제 후 재생성하세요.
 
 ## 오프라인(인터넷 미연결) 반입 가이드
 

@@ -1,4 +1,10 @@
 import type {
+  BuildStartResponse,
+  BuildStatusResponse,
+  CreateIssueRequest,
+  CreateIssueResponse,
+  IntegrationsInfo,
+  IssueCard,
   LoginResponse,
   Message,
   MessagePage,
@@ -103,6 +109,45 @@ export async function markRoomRead(roomId: number, lastMessageId: number): Promi
     method: "POST",
     body: JSON.stringify({ lastMessageId }),
   });
+}
+
+// ---------------------------------------------------------------------------
+// v3: 업무 연동 API (AI / Yona / Jenkins)
+// ---------------------------------------------------------------------------
+
+export async function fetchIntegrations(): Promise<IntegrationsInfo> {
+  return request<IntegrationsInfo>("/api/integrations");
+}
+
+/** Yona 이슈 조회 — 결과 카드는 서버가 방에 브로드캐스트 (FR-35) */
+export async function fetchIssue(issueId: string, roomId: number): Promise<IssueCard> {
+  return request<IssueCard>(`/api/yona/issues/${encodeURIComponent(issueId)}?roomId=${roomId}`);
+}
+
+/** Yona 이슈 생성 (FR-36) */
+export async function createIssue(payload: CreateIssueRequest): Promise<CreateIssueResponse> {
+  return request<CreateIssueResponse>("/api/yona/issues", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** Jenkins 빌드 실행 (FR-40) — 확인 절차는 UI에서 선행 */
+export async function startBuild(project: string, roomId: number): Promise<BuildStartResponse> {
+  return request<BuildStartResponse>("/api/jenkins/build/start", {
+    method: "POST",
+    body: JSON.stringify({ project, roomId }),
+  });
+}
+
+/** Jenkins 빌드 상태 조회 (FR-43) */
+export async function fetchBuildStatus(
+  project: string,
+  roomId: number
+): Promise<BuildStatusResponse> {
+  return request<BuildStatusResponse>(
+    `/api/jenkins/build/${encodeURIComponent(project)}/status?roomId=${roomId}`
+  );
 }
 
 /** 파일 다운로드/미리보기용 URL (쿼리 토큰 포함) */

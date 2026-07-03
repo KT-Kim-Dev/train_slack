@@ -1,4 +1,4 @@
-import type { Message, MessagePage, MessageType } from "@intra-chat/shared";
+import type { CardPayload, Message, MessagePage, MessageType } from "@intra-chat/shared";
 import { db } from "./index.js";
 
 export interface MessageRow {
@@ -11,10 +11,19 @@ export interface MessageRow {
   file_name: string | null;
   file_path: string | null;
   file_size: number | null;
+  metadata: string | null;
   created_at: string;
 }
 
 function toMessage(row: MessageRow): Message {
+  let metadata: CardPayload | null = null;
+  if (row.metadata) {
+    try {
+      metadata = JSON.parse(row.metadata) as CardPayload;
+    } catch {
+      metadata = null;
+    }
+  }
   return {
     id: row.id,
     roomId: row.room_id,
@@ -26,6 +35,7 @@ function toMessage(row: MessageRow): Message {
     // 파일이 있는 경우 다운로드/미리보기용 상대 URL 제공
     fileUrl: row.file_path ? `/api/files/${row.id}` : null,
     fileSize: row.file_size,
+    metadata,
     createdAt: row.created_at,
   };
 }
@@ -91,6 +101,60 @@ export function insertFileMessage(params: {
       params.fileSize
     );
   return getMessageById(Number(result.lastInsertRowid))!;
+}
+
+/** 카드 메시지(이슈/빌드) 저장 (message_type='card') */
+export function insertCardMessage(params: {
+  roomId: number;
+  senderId: number;
+  card: CardPayload;
+  content?: string;
+}): Message {
+  const result = db
+    .prepare(
+      "INSERT INTO messages (room_id, sender_id, message_type, content, metadata) VALUES (?, ?, 'card', ?, ?)"
+    )
+    .run(params.roomId, params.senderId, params.content ?? null, JSON.stringify(params.card));
+  return getMessageById(Number(result.lastInsertRowid))!;
+}
+
+/** AI 응답 자리표시자 생성 (스트리밍 시작 전, 빈 내용으로) */
+export function insertAiPlaceholder(params: { roomId: number; aiUserId: number }): Message {
+  const result = db
+    .prepare(
+      "INSERT INTO messages (room_id, sender_id, message_type, content) VALUES (?, ?, 'ai_response', '')"
+    )
+    .run(params.roomId, params.aiUserId);
+  return getMessageById(Number(result.lastInsertRowid))!;
+}
+
+/** 스트리밍 중/완료 시 AI 응답 내용을 갱신 */
+export function setMessageContent(messageId: number, content: string): void {
+  db.prepare("UPDATE messages SET content = ? WHERE id = ?").run(content, messageId);
+}
+
+/**
+ * AI 컨텍스트용으로 방의 최근 메시지를 오래된 순으로 조회한다 (FR-31).
+ * 텍스트/AI 응답만 포함하며 role 을 부여한다.
+ */
+export function getContextMessages(
+  roomId: number,
+  limit: number,
+  aiUserId: number
+): { role: "user" | "assistant"; content: string }[] {
+  const rows = db
+    .prepare(
+      `SELECT sender_id, message_type, content FROM messages
+       WHERE room_id = ? AND message_type IN ('text','ai_response') AND content IS NOT NULL AND content <> ''
+       ORDER BY id DESC LIMIT ?`
+    )
+    .all(roomId, limit) as { sender_id: number; message_type: MessageType; content: string }[];
+  return rows
+    .reverse()
+    .map((r) => ({
+      role: r.sender_id === aiUserId || r.message_type === "ai_response" ? "assistant" : "user",
+      content: r.content,
+    }));
 }
 
 /**

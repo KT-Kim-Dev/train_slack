@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Message } from "@intra-chat/shared";
+import type { BuildCard, IssueCard, Message } from "@intra-chat/shared";
 import { fileUrl } from "../api";
 
 interface Props {
@@ -46,9 +46,11 @@ export function MessageItem({ message, isMine, onImageClick }: Props): JSX.Eleme
     }
   }
 
+  const isAi = message.messageType === "ai_response";
+
   return (
-    <div className={`message ${isMine ? "mine" : ""}`}>
-      <div className="message-avatar">{message.senderName?.[0] ?? "?"}</div>
+    <div className={`message ${isMine ? "mine" : ""} ${isAi ? "ai" : ""}`}>
+      <div className="message-avatar">{isAi ? "🤖" : message.senderName?.[0] ?? "?"}</div>
       <div className="message-body">
         <div className="message-meta">
           <span className="message-sender">{message.senderName}</span>
@@ -57,6 +59,19 @@ export function MessageItem({ message, isMine, onImageClick }: Props): JSX.Eleme
 
         {message.messageType === "text" && (
           <div className="message-text">{message.content}</div>
+        )}
+
+        {isAi && (
+          <div className="message-text ai-text">
+            {message.content ? message.content : <span className="ai-typing">생각 중…</span>}
+          </div>
+        )}
+
+        {message.messageType === "card" && message.metadata?.kind === "issue" && (
+          <IssueCardView card={message.metadata} />
+        )}
+        {message.messageType === "card" && message.metadata?.kind === "build" && (
+          <BuildCardView card={message.metadata} />
         )}
 
         {message.messageType === "image" && url && (
@@ -85,6 +100,55 @@ export function MessageItem({ message, isMine, onImageClick }: Props): JSX.Eleme
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Yona 이슈 카드 (FR-35, FR-37) */
+function IssueCardView({ card }: { card: IssueCard }): JSX.Element {
+  return (
+    <div className="card issue-card">
+      <div className="card-header">
+        <span className="card-badge issue">ISSUE #{card.issueId}</span>
+        {card.status && <span className="card-status">{card.status}</span>}
+      </div>
+      <div className="card-title">{card.title}</div>
+      <div className="card-fields">
+        {card.assignee && <span>담당자: {card.assignee}</span>}
+        {card.priority && <span>우선순위: {card.priority}</span>}
+        {card.dueDate && <span>마감: {card.dueDate}</span>}
+      </div>
+      {card.url && (
+        <a className="card-link" href={card.url} target="_blank" rel="noreferrer">
+          이슈 열기 →
+        </a>
+      )}
+    </div>
+  );
+}
+
+/** Jenkins 빌드 카드 (FR-41, FR-42, FR-43) */
+function BuildCardView({ card }: { card: BuildCard }): JSX.Element {
+  const status = (card.status ?? "").toUpperCase();
+  const tone = status === "SUCCESS" ? "success" : status === "FAILURE" ? "failure" : "neutral";
+  const phaseLabel =
+    card.phase === "started" ? "빌드 시작" : card.phase === "finished" ? "빌드 완료" : "빌드 상태";
+  return (
+    <div className={`card build-card ${tone}`}>
+      <div className="card-header">
+        <span className="card-badge build">BUILD{card.buildNumber ? ` #${card.buildNumber}` : ""}</span>
+        <span className="card-status">{phaseLabel}</span>
+      </div>
+      <div className="card-title">{card.project}</div>
+      <div className="card-fields">
+        {card.status && <span>상태: {card.status}</span>}
+        {card.durationSec != null && <span>소요: {card.durationSec}s</span>}
+      </div>
+      {card.logUrl && (
+        <a className="card-link" href={card.logUrl} target="_blank" rel="noreferrer">
+          빌드 로그 보기 →
+        </a>
+      )}
     </div>
   );
 }

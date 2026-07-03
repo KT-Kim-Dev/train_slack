@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Message, PublicUser, Room } from "@intra-chat/shared";
-import { fetchRooms, fetchUsers, getToken } from "../api";
+import type { AiDeltaEvent, IntegrationsInfo, Message, PublicUser, Room } from "@intra-chat/shared";
+import { fetchIntegrations, fetchRooms, fetchUsers, getToken } from "../api";
 import { connectSocket, disconnectSocket } from "../socket";
 import { Sidebar } from "./Sidebar";
 import { ChatRoom } from "./ChatRoom";
+
+/** 활성 채팅방이 등록하는 실시간 이벤트 핸들러 */
+export interface ActiveRoomHandlers {
+  onMessage: (msg: Message) => void;
+  onAiDelta: (payload: AiDeltaEvent) => void;
+}
 
 interface Props {
   currentUser: PublicUser;
@@ -15,9 +21,10 @@ export function ChatPage({ currentUser, onLogout }: Props): JSX.Element {
   const [users, setUsers] = useState<PublicUser[]>([]);
   const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [integrations, setIntegrations] = useState<IntegrationsInfo | null>(null);
 
-  // 활성 방으로 들어온 실시간 메시지를 ChatRoom 에 전달하기 위한 콜백 등록소
-  const activeRoomHandler = useRef<((msg: Message) => void) | null>(null);
+  // 활성 방으로 들어온 실시간 이벤트를 ChatRoom 에 전달하기 위한 콜백 등록소
+  const activeRoomHandler = useRef<ActiveRoomHandlers | null>(null);
   const selectedRoomIdRef = useRef<number | null>(null);
   selectedRoomIdRef.current = selectedRoomId;
 
@@ -45,7 +52,7 @@ export function ChatPage({ currentUser, onLogout }: Props): JSX.Element {
 
     socket.on("message:new", (message) => {
       if (message.roomId === selectedRoomIdRef.current && activeRoomHandler.current) {
-        activeRoomHandler.current(message);
+        activeRoomHandler.current.onMessage(message);
       } else {
         // 다른 방 메시지는 미읽음 배지 증가 (FR-09)
         setRooms((prev) =>
@@ -53,6 +60,12 @@ export function ChatPage({ currentUser, onLogout }: Props): JSX.Element {
             r.id === message.roomId ? { ...r, unreadCount: (r.unreadCount ?? 0) + 1 } : r
           )
         );
+      }
+    });
+
+    socket.on("ai:delta", (payload) => {
+      if (payload.roomId === selectedRoomIdRef.current && activeRoomHandler.current) {
+        activeRoomHandler.current.onAiDelta(payload);
       }
     });
 
@@ -75,7 +88,7 @@ export function ChatPage({ currentUser, onLogout }: Props): JSX.Element {
   useEffect(() => {
     void (async () => {
       try {
-        const [roomList] = await Promise.all([reloadRooms(), loadUsers()]);
+        const [roomList] = await Promise.all([reloadRooms(), loadUsers(), loadIntegrations()]);
         if (roomList.length > 0 && selectedRoomIdRef.current === null) {
           setSelectedRoomId(roomList[0].id);
         }
@@ -86,6 +99,13 @@ export function ChatPage({ currentUser, onLogout }: Props): JSX.Element {
     async function loadUsers(): Promise<void> {
       setUsers(await fetchUsers());
     }
+    async function loadIntegrations(): Promise<void> {
+      try {
+        setIntegrations(await fetchIntegrations());
+      } catch {
+        /* 연동 정보 로딩 실패는 채팅 기능에 영향 없음 */
+      }
+    }
   }, [reloadRooms, onLogout]);
 
   function handleSelectRoom(roomId: number): void {
@@ -94,8 +114,8 @@ export function ChatPage({ currentUser, onLogout }: Props): JSX.Element {
     setRooms((prev) => prev.map((r) => (r.id === roomId ? { ...r, unreadCount: 0 } : r)));
   }
 
-  const registerActiveHandler = useCallback((handler: ((msg: Message) => void) | null) => {
-    activeRoomHandler.current = handler;
+  const registerActiveHandler = useCallback((handlers: ActiveRoomHandlers | null) => {
+    activeRoomHandler.current = handlers;
   }, []);
 
   const selectedRoom = rooms.find((r) => r.id === selectedRoomId) ?? null;
@@ -117,6 +137,7 @@ export function ChatPage({ currentUser, onLogout }: Props): JSX.Element {
           key={selectedRoom.id}
           room={selectedRoom}
           currentUser={currentUser}
+          integrations={integrations}
           registerActiveHandler={registerActiveHandler}
         />
       ) : (

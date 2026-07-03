@@ -10,6 +10,9 @@ import { roomsRouter } from "./routes/rooms.js";
 import { usersRouter } from "./routes/users.js";
 import { filesRouter } from "./routes/files.js";
 import { adminRouter } from "./routes/admin.js";
+import { yonaRouter } from "./routes/yona.js";
+import { jenkinsRouter } from "./routes/jenkins.js";
+import { integrationsRouter } from "./routes/integrations.js";
 
 initDb();
 
@@ -25,8 +28,12 @@ app.use("/api/auth", authRouter);
 app.use("/api/rooms", roomsRouter);
 app.use("/api/users", usersRouter);
 app.use("/api/admin", adminRouter);
-// 파일 라우트는 /api/rooms/:id/files 와 /api/files/:id 두 경로를 모두 다룬다.
+app.use("/api/yona", yonaRouter);
+app.use("/api/jenkins", jenkinsRouter);
+app.use("/api/integrations", integrationsRouter);
+// 파일 라우트(/api/rooms/:id/files, /api/files/:id)와 Jenkins 웹훅(/api/webhooks/jenkins)
 app.use("/api", filesRouter);
+app.use("/api", jenkinsRouter);
 
 // 공통 에러 핸들러
 app.use(

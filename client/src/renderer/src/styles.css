@@ -552,6 +552,109 @@ body {
   gap: 8px;
 }
 
+/* ---------- AI / 명령어 / 카드 ---------- */
+.message.ai .message-avatar {
+  background: #10a37f;
+}
+.ai-text {
+  background: rgba(16, 163, 127, 0.08);
+  border-left: 3px solid #10a37f;
+  padding: 8px 12px;
+  border-radius: 6px;
+}
+.ai-typing {
+  color: var(--text-muted);
+  font-style: italic;
+}
+.command-hints {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.confirm-text {
+  line-height: 1.6;
+}
+.confirm-warn {
+  color: #ffb454;
+  font-size: 13px;
+}
+.modal-textarea {
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: #1a1d21;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 14px;
+  resize: vertical;
+}
+
+.card {
+  margin-top: 4px;
+  padding: 12px 14px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: 8px;
+  max-width: 420px;
+}
+.issue-card {
+  border-left-color: #7c3aed;
+}
+.build-card.success {
+  border-left-color: var(--online);
+}
+.build-card.failure {
+  border-left-color: #ff6b6b;
+}
+.build-card.neutral {
+  border-left-color: var(--accent);
+}
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.card-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+}
+.card-badge.issue {
+  color: #b794f6;
+}
+.card-badge.build {
+  color: #7fd1b9;
+}
+.card-status {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.card-title {
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.card-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.card-link {
+  display: inline-block;
+  margin-top: 8px;
+  color: #6cb2ff;
+  font-size: 13px;
+  text-decoration: none;
+}
+.card-link:hover {
+  text-decoration: underline;
+}
+
 /* ---------- 라이트박스 ---------- */
 .lightbox-backdrop {
   position: fixed;
