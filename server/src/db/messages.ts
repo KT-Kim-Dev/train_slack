@@ -118,13 +118,13 @@ export function insertCardMessage(params: {
   return getMessageById(Number(result.lastInsertRowid))!;
 }
 
-/** AI 응답 자리표시자 생성 (스트리밍 시작 전, 빈 내용으로) */
-export function insertAiPlaceholder(params: { roomId: number; aiUserId: number }): Message {
+/** AI 응답 자리표시자 생성 (스트리밍 시작 전, 빈 내용으로). 발신자는 질문한 사용자. */
+export function insertAiPlaceholder(params: { roomId: number; senderId: number }): Message {
   const result = db
     .prepare(
       "INSERT INTO messages (room_id, sender_id, message_type, content) VALUES (?, ?, 'ai_response', '')"
     )
-    .run(params.roomId, params.aiUserId);
+    .run(params.roomId, params.senderId);
   return getMessageById(Number(result.lastInsertRowid))!;
 }
 
@@ -135,24 +135,23 @@ export function setMessageContent(messageId: number, content: string): void {
 
 /**
  * AI 컨텍스트용으로 방의 최근 메시지를 오래된 순으로 조회한다 (FR-31).
- * 텍스트/AI 응답만 포함하며 role 을 부여한다.
+ * message_type 으로 role 을 판별하므로 AI 시스템 계정 ID 가 불필요하다.
  */
 export function getContextMessages(
   roomId: number,
-  limit: number,
-  aiUserId: number
+  limit: number
 ): { role: "user" | "assistant"; content: string }[] {
   const rows = db
     .prepare(
-      `SELECT sender_id, message_type, content FROM messages
+      `SELECT message_type, content FROM messages
        WHERE room_id = ? AND message_type IN ('text','ai_response') AND content IS NOT NULL AND content <> ''
        ORDER BY id DESC LIMIT ?`
     )
-    .all(roomId, limit) as { sender_id: number; message_type: MessageType; content: string }[];
+    .all(roomId, limit) as { message_type: MessageType; content: string }[];
   return rows
     .reverse()
     .map((r) => ({
-      role: r.sender_id === aiUserId || r.message_type === "ai_response" ? "assistant" : "user",
+      role: r.message_type === "ai_response" ? "assistant" : "user",
       content: r.content,
     }));
 }

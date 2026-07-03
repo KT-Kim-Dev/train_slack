@@ -79,3 +79,13 @@ export function getBuildRoom(project: string, buildNumber: number): number | nul
     .get(project, buildNumber) as { room_id: number | null } | undefined;
   return row?.room_id ?? null;
 }
+
+/** 빌드를 실행한 사용자 ID 조회 (웹훅 완료 알림의 발신자로 사용) */
+export function getBuildTriggeredBy(project: string, buildNumber: number): number | null {
+  const row = db
+    .prepare(
+      "SELECT triggered_by FROM build_history WHERE project = ? AND build_number = ? ORDER BY id DESC LIMIT 1"
+    )
+    .get(project, buildNumber) as { triggered_by: number | null } | undefined;
+  return row?.triggered_by ?? null;
+}

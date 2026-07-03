@@ -5,7 +5,6 @@ import type { AuthedRequest } from "../auth/middleware.js";
 import { requireAuth } from "../auth/middleware.js";
 import { isMember } from "../db/rooms.js";
 import { insertCardMessage } from "../db/messages.js";
-import { getAiUserId } from "../db/index.js";
 import { logCommand } from "../db/integrations.js";
 import { broadcastMessage } from "../sockets/index.js";
 import { createIssue, getIssue } from "../services/yona.js";
@@ -25,7 +24,7 @@ yonaRouter.get("/issues/:id", async (req: AuthedRequest, res) => {
     const card: IssueCard = { kind: "issue", ...issue };
 
     if (roomId && isMember(roomId, req.auth!.userId)) {
-      const msg = insertCardMessage({ roomId, senderId: getAiUserId(), card });
+      const msg = insertCardMessage({ roomId, senderId: req.auth!.userId, card });
       broadcastMessage(msg);
     }
     logCommand({
@@ -72,7 +71,7 @@ yonaRouter.post("/issues", async (req: AuthedRequest, res) => {
     if (isMember(parsed.data.roomId, req.auth!.userId)) {
       const msg = insertCardMessage({
         roomId: parsed.data.roomId,
-        senderId: getAiUserId(),
+        senderId: req.auth!.userId,
         card,
         content: `이슈가 생성되었습니다: ${created.url}`,
       });

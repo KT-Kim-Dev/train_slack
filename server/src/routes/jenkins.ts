@@ -6,7 +6,7 @@ import { requireAuth } from "../auth/middleware.js";
 import { isMember } from "../db/rooms.js";
 import { insertCardMessage } from "../db/messages.js";
 import { getAiUserId } from "../db/index.js";
-import { finishBuildHistory, getBuildRoom, insertBuildHistory, logCommand } from "../db/integrations.js";
+import { finishBuildHistory, getBuildRoom, getBuildTriggeredBy, insertBuildHistory, logCommand } from "../db/integrations.js";
 import { broadcastMessage } from "../sockets/index.js";
 import { getStatus, startBuild } from "../services/jenkins.js";
 import { IntegrationError } from "../services/ollama.js";
@@ -50,7 +50,7 @@ jenkinsRouter.post("/build/start", requireAuth, async (req: AuthedRequest, res) 
       };
       const msg = insertCardMessage({
         roomId,
-        senderId: getAiUserId(),
+        senderId: req.auth!.userId,
         card,
         content: `Build #${result.buildNumber ?? "?"} 시작 (${project})`,
       });
@@ -87,7 +87,7 @@ jenkinsRouter.get("/build/:project/status", requireAuth, async (req: AuthedReque
         durationSec: status.durationSec,
         logUrl: status.logUrl,
       };
-      const msg = insertCardMessage({ roomId, senderId: getAiUserId(), card });
+      const msg = insertCardMessage({ roomId, senderId: req.auth!.userId, card });
       broadcastMessage(msg);
     }
     logCommand({
@@ -127,6 +127,8 @@ jenkinsRouter.post("/webhooks/jenkins", (req, res) => {
 
   const roomId = getBuildRoom(project, buildNumber);
   if (roomId) {
+    // 빌드를 실행한 사용자를 발신자로 표시. 없으면 AI 시스템 계정으로 fallback.
+    const triggeredBy = getBuildTriggeredBy(project, buildNumber) ?? getAiUserId();
     const card: BuildCard = {
       kind: "build",
       phase: "finished",
@@ -139,7 +141,7 @@ jenkinsRouter.post("/webhooks/jenkins", (req, res) => {
     const emoji = status.toUpperCase() === "SUCCESS" ? "✅" : "❌";
     const msg = insertCardMessage({
       roomId,
-      senderId: getAiUserId(),
+      senderId: triggeredBy,
       card,
       content: `${emoji} Build #${buildNumber} ${status} (${project})`,
     });

@@ -15,7 +15,6 @@ import {
   setMessageContent,
 } from "../db/messages.js";
 import { getRoomIdsForUser, isMember, markRoomRead } from "../db/rooms.js";
-import { getAiUserId } from "../db/index.js";
 import { logCommand } from "../db/integrations.js";
 import { chatStream, IntegrationError } from "../services/ollama.js";
 import { config } from "../config.js";
@@ -184,19 +183,18 @@ async function handleAiAsk(
   model?: string
 ): Promise<void> {
   const server = getIo();
-  const aiUserId = getAiUserId();
 
   // 1) 질문 메시지 저장/브로드캐스트
   const question = insertTextMessage({ roomId, senderId: userId, content });
   markRoomRead(roomId, userId, question.id);
   broadcastMessage(question);
 
-  // 2) AI 응답 자리표시자
-  const placeholder = insertAiPlaceholder({ roomId, aiUserId });
+  // 2) AI 응답 자리표시자 — 발신자를 질문한 사용자로 표시 (message_type으로 AI 여부 구분)
+  const placeholder = insertAiPlaceholder({ roomId, senderId: userId });
   broadcastMessage(placeholder);
 
   // 3) 컨텍스트 구성 (FR-31)
-  const history = getContextMessages(roomId, config.ai.contextLimit, aiUserId);
+  const history = getContextMessages(roomId, config.ai.contextLimit);
   const messages = [
     { role: "system" as const, content: "당신은 사내 업무를 돕는 한국어 AI 어시스턴트입니다. 간결하고 정확하게 답변하세요." },
     ...history,
