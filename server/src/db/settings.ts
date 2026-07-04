@@ -12,6 +12,15 @@ export interface IntegrationSettings {
   ollama_model: string;
   ollama_timeout_ms: number;
   ai_context_limit: number;
+  ai_reply_language: "ko" | "en" | "auto";
+  ai_extra_instructions: string;
+  ai_show_reasoning: boolean;
+  rag_enabled: boolean;
+  rag_auto_learn: boolean;
+  rag_embedding_model: string;
+  rag_top_k: number;
+  rag_shared_folder: string;
+  rag_last_sync_at: string;
   yona_url: string;
   yona_token: string;
   yona_default_project: string;
@@ -25,6 +34,15 @@ const DEFAULTS: IntegrationSettings = {
   ollama_model: "llama3",
   ollama_timeout_ms: 60000,
   ai_context_limit: 10,
+  ai_reply_language: "ko",
+  ai_extra_instructions: "",
+  ai_show_reasoning: false,
+  rag_enabled: true,
+  rag_auto_learn: true,
+  rag_embedding_model: "nomic-embed-text",
+  rag_top_k: 5,
+  rag_shared_folder: "",
+  rag_last_sync_at: "",
   yona_url: "",
   yona_token: "",
   yona_default_project: "",
@@ -33,6 +51,16 @@ const DEFAULTS: IntegrationSettings = {
   jenkins_token: "",
 };
 
+function parseReplyLanguage(raw: string | undefined): IntegrationSettings["ai_reply_language"] {
+  if (raw === "en" || raw === "auto") return raw;
+  return "ko";
+}
+
+function parseBool(raw: string | undefined, fallback: boolean): boolean {
+  if (raw === undefined) return fallback;
+  return raw === "true" || raw === "1";
+}
+
 /** env 기반 초기값 (DB에 없을 때 폴백) */
 function envDefaults(): IntegrationSettings {
   return {
@@ -40,6 +68,15 @@ function envDefaults(): IntegrationSettings {
     ollama_model: process.env.OLLAMA_MODEL?.trim() || DEFAULTS.ollama_model,
     ollama_timeout_ms: Number(process.env.OLLAMA_TIMEOUT_MS ?? DEFAULTS.ollama_timeout_ms),
     ai_context_limit: Number(process.env.AI_CONTEXT_LIMIT ?? DEFAULTS.ai_context_limit),
+    ai_reply_language: parseReplyLanguage(process.env.AI_REPLY_LANGUAGE),
+    ai_extra_instructions: process.env.AI_EXTRA_INSTRUCTIONS?.trim() ?? "",
+    ai_show_reasoning: parseBool(process.env.AI_SHOW_REASONING, DEFAULTS.ai_show_reasoning),
+    rag_enabled: parseBool(process.env.RAG_ENABLED, DEFAULTS.rag_enabled),
+    rag_auto_learn: parseBool(process.env.RAG_AUTO_LEARN, DEFAULTS.rag_auto_learn),
+    rag_embedding_model: process.env.RAG_EMBEDDING_MODEL?.trim() || DEFAULTS.rag_embedding_model,
+    rag_top_k: Number(process.env.RAG_TOP_K ?? DEFAULTS.rag_top_k),
+    rag_shared_folder: process.env.RAG_SHARED_FOLDER?.trim() ?? "",
+    rag_last_sync_at: process.env.RAG_LAST_SYNC_AT?.trim() ?? "",
     yona_url: process.env.YONA_URL?.trim() ?? "",
     yona_token: process.env.YONA_TOKEN?.trim() ?? "",
     yona_default_project: process.env.YONA_DEFAULT_PROJECT?.trim() ?? "",
@@ -65,6 +102,18 @@ export function getSettings(): IntegrationSettings {
     ollama_model: map.ollama_model || env.ollama_model,
     ollama_timeout_ms: map.ollama_timeout_ms ? Number(map.ollama_timeout_ms) : env.ollama_timeout_ms,
     ai_context_limit: map.ai_context_limit ? Number(map.ai_context_limit) : env.ai_context_limit,
+    ai_reply_language: parseReplyLanguage(map.ai_reply_language ?? env.ai_reply_language),
+    ai_extra_instructions: map.ai_extra_instructions ?? env.ai_extra_instructions,
+    ai_show_reasoning: map.ai_show_reasoning !== undefined
+      ? parseBool(map.ai_show_reasoning, DEFAULTS.ai_show_reasoning)
+      : env.ai_show_reasoning,
+    rag_enabled: map.rag_enabled !== undefined ? parseBool(map.rag_enabled, DEFAULTS.rag_enabled) : env.rag_enabled,
+    rag_auto_learn:
+      map.rag_auto_learn !== undefined ? parseBool(map.rag_auto_learn, DEFAULTS.rag_auto_learn) : env.rag_auto_learn,
+    rag_embedding_model: map.rag_embedding_model || env.rag_embedding_model,
+    rag_top_k: map.rag_top_k ? Number(map.rag_top_k) : env.rag_top_k,
+    rag_shared_folder: map.rag_shared_folder ?? env.rag_shared_folder,
+    rag_last_sync_at: map.rag_last_sync_at ?? env.rag_last_sync_at,
     yona_url: map.yona_url ?? env.yona_url,
     yona_token: map.yona_token ?? env.yona_token,
     yona_default_project: map.yona_default_project ?? env.yona_default_project,

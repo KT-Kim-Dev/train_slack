@@ -9,7 +9,10 @@ import type {
   LoginResponse,
   Message,
   MessagePage,
+  OllamaModelsResponse,
   PublicUser,
+  RagStats,
+  RagSyncResult,
   Room,
 } from "@intra-chat/shared";
 import { SERVER_URL } from "./config";
@@ -128,6 +131,24 @@ export async function saveAdminSettings(settings: Partial<AdminSettings>): Promi
   await request<{ ok: boolean }>("/api/admin/settings", {
     method: "PUT",
     body: JSON.stringify(settings),
+  });
+}
+
+/** Ollama URL에서 사용 가능한 모델 목록 조회 */
+export async function fetchOllamaModels(url?: string): Promise<OllamaModelsResponse> {
+  const query = url?.trim() ? `?url=${encodeURIComponent(url.trim())}` : "";
+  return request<OllamaModelsResponse>(`/api/admin/settings/ollama-models${query}`);
+}
+
+export async function fetchRagStats(): Promise<RagStats> {
+  return request<RagStats>("/api/admin/rag/stats");
+}
+
+export async function syncRagFolder(folder?: string): Promise<RagSyncResult> {
+  const trimmed = folder?.trim();
+  return request<RagSyncResult>("/api/admin/rag/sync-folder", {
+    method: "POST",
+    body: JSON.stringify(trimmed ? { folder: trimmed } : {}),
   });
 }
 

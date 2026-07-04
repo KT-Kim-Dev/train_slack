@@ -1,16 +1,17 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { AdminSettings } from "@intra-chat/shared";
-import { fetchAdminSettings, saveAdminSettings } from "../api";
+import { fetchAdminSettings, fetchOllamaModels, fetchRagStats, saveAdminSettings, syncRagFolder } from "../api";
 
 interface Props {
   onClose: () => void;
+  onSaved?: () => void | Promise<void>;
 }
 
 type Tab = "ai" | "yona" | "jenkins";
 
 const PLACEHOLDER_TOKEN = "••••••••";
 
-export function AdminSettingsModal({ onClose }: Props): JSX.Element {
+export function AdminSettingsModal({ onClose, onSaved }: Props): JSX.Element {
   const [tab, setTab] = useState<Tab>("ai");
   const [settings, setSettings] = useState<AdminSettings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -25,7 +26,7 @@ export function AdminSettingsModal({ onClose }: Props): JSX.Element {
       .finally(() => setLoading(false));
   }, []);
 
-  function set(key: keyof AdminSettings, value: string | number): void {
+  function set(key: keyof AdminSettings, value: string | number | boolean): void {
     setSettings((prev) => (prev ? { ...prev, [key]: value } : prev));
     setSaved(false);
   }
@@ -36,6 +37,7 @@ export function AdminSettingsModal({ onClose }: Props): JSX.Element {
     setError(null);
     try {
       await saveAdminSettings(settings);
+      await onSaved?.();
       setSaved(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "저장에 실패했습니다.");
@@ -119,8 +121,91 @@ function AiTab({
   onChange,
 }: {
   settings: AdminSettings;
-  onChange: (k: keyof AdminSettings, v: string | number) => void;
+  onChange: (k: keyof AdminSettings, v: string | number | boolean) => void;
 }): JSX.Element {
+  const [models, setModels] = useState<string[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsError, setModelsError] = useState<string | null>(null);
+  const [loadedUrl, setLoadedUrl] = useState<string | null>(null);
+  const [ragStats, setRagStats] = useState<Awaited<ReturnType<typeof fetchRagStats>> | null>(null);
+  const [ragSyncing, setRagSyncing] = useState(false);
+  const [ragSyncMessage, setRagSyncMessage] = useState<string | null>(null);
+
+  const loadModels = useCallback(async () => {
+    const url = settings.ollama_url.trim();
+    if (!url) {
+      setModels([]);
+      setLoadedUrl(null);
+      setModelsError("Ollama URL을 입력해 주세요.");
+      return;
+    }
+
+    setModelsLoading(true);
+    setModelsError(null);
+    try {
+      const res = await fetchOllamaModels(url);
+      setModels(res.models);
+      setLoadedUrl(url);
+      if (res.models.length === 0) {
+        setModelsError("연결은 되었지만 설치된 모델이 없습니다.");
+      }
+    } catch (err) {
+      setModels([]);
+      setLoadedUrl(null);
+      setModelsError(err instanceof Error ? err.message : "모델 목록을 불러오지 못했습니다.");
+    } finally {
+      setModelsLoading(false);
+    }
+  }, [settings.ollama_url]);
+
+  useEffect(() => {
+    if (settings.ollama_url.trim()) {
+      void loadModels();
+    }
+    void fetchRagStats()
+      .then(setRagStats)
+      .catch(() => undefined);
+  }, []);
+
+  async function handlePickFolder(): Promise<void> {
+    try {
+      const picked = await window.intraChat.pickFolder(settings.rag_shared_folder.trim() || undefined);
+      if (picked) onChange("rag_shared_folder", picked);
+    } catch {
+      setRagSyncMessage("폴더 선택 대화상자를 열 수 없습니다.");
+    }
+  }
+
+  async function handleSyncFolder(): Promise<void> {
+    const folder = settings.rag_shared_folder.trim();
+    if (!folder) {
+      setRagSyncMessage("문서 폴더 경로를 입력하거나 찾아보기로 선택해 주세요.");
+      return;
+    }
+
+    setRagSyncing(true);
+    setRagSyncMessage(null);
+    try {
+      const result = await syncRagFolder(folder);
+      const [stats] = await Promise.all([fetchRagStats()]);
+      setRagStats(stats);
+      const errorPart = result.errors.length > 0 ? ` (오류 ${result.errors.length}건)` : "";
+      setRagSyncMessage(
+        `동기화 완료: 파일 ${result.filesProcessed}개, 조각 ${result.chunksIndexed}개 저장, ${result.chunksRemoved}개 삭제${errorPart}`
+      );
+    } catch (err) {
+      setRagSyncMessage(err instanceof Error ? err.message : "동기화에 실패했습니다.");
+    } finally {
+      setRagSyncing(false);
+    }
+  }
+
+  const urlChanged = loadedUrl !== null && loadedUrl !== settings.ollama_url.trim();
+  const savedModelMissing =
+    settings.ollama_model.trim().length > 0 &&
+    models.length > 0 &&
+    !models.includes(settings.ollama_model);
+
   return (
     <>
       <p className="settings-desc">
@@ -128,19 +213,204 @@ function AiTab({
         비워두면 AI 기능이 비활성화됩니다.
       </p>
       <Field label="Ollama URL" hint="예: http://192.168.1.10:11434">
-        <input
-          value={settings.ollama_url}
-          onChange={(e) => onChange("ollama_url", e.target.value)}
-          placeholder="http://localhost:11434"
+        <div className="ollama-url-row">
+          <input
+            value={settings.ollama_url}
+            onChange={(e) => onChange("ollama_url", e.target.value)}
+            placeholder="http://localhost:11434"
+          />
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => void loadModels()}
+            disabled={modelsLoading || !settings.ollama_url.trim()}
+          >
+            {modelsLoading ? "불러오는 중..." : "모델 목록 불러오기"}
+          </button>
+        </div>
+      </Field>
+
+      {urlChanged && (
+        <div className="settings-hint-warn">URL이 변경되었습니다. 모델 목록을 다시 불러와 주세요.</div>
+      )}
+      {modelsError && <div className="settings-hint-error">{modelsError}</div>}
+      {!modelsError && loadedUrl && models.length > 0 && (
+        <div className="settings-hint-ok">
+          {loadedUrl} 에서 {models.length}개 모델을 찾았습니다.
+        </div>
+      )}
+
+      <Field label="활성 모델" hint="AI 채팅(/ai)에 사용할 모델">
+        {models.length > 0 ? (
+          <div className="model-list" role="radiogroup" aria-label="Ollama 모델 선택">
+            {models.map((model) => (
+              <label
+                key={model}
+                className={`model-option ${settings.ollama_model === model ? "selected" : ""}`}
+              >
+                <input
+                  type="radio"
+                  name="ollama_model"
+                  value={model}
+                  checked={settings.ollama_model === model}
+                  onChange={() => onChange("ollama_model", model)}
+                />
+                <span>{model}</span>
+              </label>
+            ))}
+          </div>
+        ) : (
+          <input
+            value={settings.ollama_model}
+            onChange={(e) => onChange("ollama_model", e.target.value)}
+            placeholder="모델 목록을 불러온 뒤 선택하거나 직접 입력"
+            disabled={!settings.ollama_url.trim()}
+          />
+        )}
+      </Field>
+
+      {savedModelMissing && (
+        <div className="settings-hint-warn">
+          현재 저장된 모델({settings.ollama_model})이 목록에 없습니다. 다른 모델을 선택해 주세요.
+        </div>
+      )}
+
+      <div className="settings-section-title">AI 동작 설정</div>
+      <p className="settings-desc">
+        AI가 어떻게 답변할지 지정합니다. 저장 후 다음 <code>/ai</code> 요청부터 적용됩니다.
+      </p>
+
+      <Field label="응답 언어">
+        <select
+          value={settings.ai_reply_language}
+          onChange={(e) => onChange("ai_reply_language", e.target.value)}
+        >
+          <option value="ko">한국어로 답변</option>
+          <option value="en">English</option>
+          <option value="auto">질문과 같은 언어</option>
+        </select>
+      </Field>
+
+      <Field
+        label="추가 지시사항"
+        hint="예: 코드는 주석 없이, 표로 정리해 줘, 사내 용어를 사용해 줘"
+      >
+        <textarea
+          className="field-textarea"
+          value={settings.ai_extra_instructions}
+          onChange={(e) => onChange("ai_extra_instructions", e.target.value)}
+          placeholder="한국어로 답변해라. 전문 용어는 쉽게 풀어서 설명해 줘."
+          rows={4}
+          maxLength={2000}
         />
       </Field>
-      <Field label="기본 모델" hint="Ollama에 설치된 모델명">
+
+      <label className="field-checkbox">
         <input
-          value={settings.ollama_model}
-          onChange={(e) => onChange("ollama_model", e.target.value)}
-          placeholder="llama3"
+          type="checkbox"
+          checked={settings.ai_show_reasoning}
+          onChange={(e) => onChange("ai_show_reasoning", e.target.checked)}
+        />
+        <span>
+          <b>추론 과정 표시</b>
+          <span className="field-hint">
+            {" "}— thinking 모델(qwen3.5 등)의 추론 내용을 함께 표시합니다. 끄면 최종 답변만 출력합니다.
+          </span>
+        </span>
+      </label>
+
+      <div className="settings-section-title">RAG 지식 베이스</div>
+      <p className="settings-desc">
+        AI Q&A 자동 학습과 지정 폴더의 문서를 검색해 답변에 활용합니다. 임베딩 모델은 Ollama에 설치되어 있어야 합니다.
+      </p>
+
+      <label className="field-checkbox">
+        <input
+          type="checkbox"
+          checked={settings.rag_enabled}
+          onChange={(e) => onChange("rag_enabled", e.target.checked)}
+        />
+        <span><b>RAG 사용</b><span className="field-hint"> — 지식 베이스 검색을 AI 답변에 반영</span></span>
+      </label>
+
+      <label className="field-checkbox">
+        <input
+          type="checkbox"
+          checked={settings.rag_auto_learn}
+          onChange={(e) => onChange("rag_auto_learn", e.target.checked)}
+          disabled={!settings.rag_enabled}
+        />
+        <span><b>Q&A 자동 학습</b><span className="field-hint"> — /ai 질문·답변을 지식 베이스에 저장</span></span>
+      </label>
+
+      <Field label="임베딩 모델" hint="예: nomic-embed-text">
+        <input
+          value={settings.rag_embedding_model}
+          onChange={(e) => onChange("rag_embedding_model", e.target.value)}
+          placeholder="nomic-embed-text"
+          disabled={!settings.rag_enabled}
         />
       </Field>
+
+      <Field label="검색 조각 수 (top-K)" hint="질문마다 참고할 지식 조각 수">
+        <input
+          type="number"
+          value={settings.rag_top_k}
+          onChange={(e) => onChange("rag_top_k", Number(e.target.value))}
+          min={1}
+          max={20}
+          disabled={!settings.rag_enabled}
+        />
+      </Field>
+
+      <Field label="문서 폴더" hint="로컬/네트워크 경로 모두 가능. 하위 폴더까지 검색. 저장 전에도 동기화 가능">
+        <div className="ollama-url-row">
+          <input
+            value={settings.rag_shared_folder}
+            onChange={(e) => onChange("rag_shared_folder", e.target.value)}
+            placeholder="D:\docs\rag-knowledge"
+            disabled={!settings.rag_enabled}
+          />
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => void handlePickFolder()}
+            disabled={!settings.rag_enabled}
+          >
+            찾아보기
+          </button>
+        </div>
+        <button
+          type="button"
+          className="btn-secondary rag-sync-btn"
+          onClick={() => void handleSyncFolder()}
+          disabled={ragSyncing || !settings.rag_enabled || !settings.rag_shared_folder.trim()}
+        >
+          {ragSyncing ? "동기화 중..." : "문서 동기화"}
+        </button>
+      </Field>
+
+      <p className="settings-desc">
+        지원 형식: <code>.txt</code>, <code>.md</code>, <code>.markdown</code>, <code>.memo</code>
+        {ragStats && (
+          <>
+            <br />
+            현재 지식: 총 {ragStats.totalChunks}개 (Q&A {ragStats.qaChunks} / 문서 {ragStats.documentChunks})
+            {ragStats.lastSyncAt && (
+              <>
+                <br />
+                마지막 동기화: {new Date(ragStats.lastSyncAt).toLocaleString()}
+              </>
+            )}
+          </>
+        )}
+      </p>
+      {ragSyncMessage && (
+        <div className={ragSyncMessage.startsWith("동기화 완료") ? "settings-hint-ok" : "settings-hint-error"}>
+          {ragSyncMessage}
+        </div>
+      )}
+
       <Field label="타임아웃 (ms)" hint="응답 대기 시간 (기본 60000)">
         <input
           type="number"
@@ -168,7 +438,7 @@ function YonaTab({
   onChange,
 }: {
   settings: AdminSettings;
-  onChange: (k: keyof AdminSettings, v: string | number) => void;
+  onChange: (k: keyof AdminSettings, v: string | number | boolean) => void;
 }): JSX.Element {
   return (
     <>
@@ -207,7 +477,7 @@ function JenkinsTab({
   onChange,
 }: {
   settings: AdminSettings;
-  onChange: (k: keyof AdminSettings, v: string | number) => void;
+  onChange: (k: keyof AdminSettings, v: string | number | boolean) => void;
 }): JSX.Element {
   return (
     <>

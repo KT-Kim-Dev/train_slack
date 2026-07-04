@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AiDeltaEvent, IntegrationsInfo, Message, PublicUser, Room } from "@intra-chat/shared";
-import { fetchBuildStatus, fetchIssue, fetchMessages, markRoomRead } from "../api";
+import { fetchBuildStatus, fetchIntegrations, fetchIssue, fetchMessages, markRoomRead } from "../api";
 import { askAi, sendMessage } from "../socket";
 import { parseCommand } from "../commands";
 import { MessageItem } from "./MessageItem";
@@ -25,12 +25,16 @@ export function ChatRoom({ room, currentUser, integrations, registerActiveHandle
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [showIssueModal, setShowIssueModal] = useState(false);
   const [buildToConfirm, setBuildToConfirm] = useState<string | null>(null);
+  const [streamingAiIds, setStreamingAiIds] = useState<Set<number>>(() => new Set());
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const nearBottomRef = useRef(true);
 
   const appendMessage = useCallback((msg: Message) => {
     setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
+    if (msg.messageType === "ai_response" && !msg.content) {
+      setStreamingAiIds((prev) => new Set(prev).add(msg.id));
+    }
   }, []);
 
   // AI 스트리밍 델타로 해당 메시지 내용을 갱신 (FR-30)
@@ -45,6 +49,12 @@ export function ChatRoom({ room, currentUser, integrations, registerActiveHandle
         return { ...m, content: (m.content ?? "") + payload.delta };
       })
     );
+    setStreamingAiIds((prev) => {
+      const next = new Set(prev);
+      if (payload.done) next.delete(payload.messageId);
+      else next.add(payload.messageId);
+      return next;
+    });
     if (nearBottomRef.current) requestAnimationFrame(() => scrollToBottom("smooth"));
   }, []);
 
@@ -55,6 +65,7 @@ export function ChatRoom({ room, currentUser, integrations, registerActiveHandle
 
   useEffect(() => {
     let cancelled = false;
+    setStreamingAiIds(new Set());
     void (async () => {
       const page = await fetchMessages(room.id);
       if (cancelled) return;
@@ -152,8 +163,9 @@ export function ChatRoom({ room, currentUser, integrations, registerActiveHandle
     }
   }
   async function ensureAiEnabled(): Promise<void> {
-    if (integrations && !integrations.ai.enabled) {
-      throw new Error("AI 기능이 비활성화되어 있습니다. 서버 관리자에게 문의하세요.");
+    const info = await fetchIntegrations();
+    if (!info.ai.enabled) {
+      throw new Error("AI 기능이 비활성화되어 있습니다. 관리자 설정에서 Ollama URL을 입력해 주세요.");
     }
   }
 
@@ -180,6 +192,7 @@ export function ChatRoom({ room, currentUser, integrations, registerActiveHandle
             key={m.id}
             message={m}
             isMine={m.senderId === currentUser.id}
+            isAiStreaming={streamingAiIds.has(m.id)}
             onImageClick={setLightboxUrl}
           />
         ))}

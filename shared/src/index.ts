@@ -21,12 +21,32 @@ export interface PublicUser {
   isAdmin: boolean;
 }
 
+export type AiReplyLanguage = "ko" | "en" | "auto";
+
 /** 관리자 UI에서 편집하는 통합 연동 설정 */
 export interface AdminSettings {
   ollama_url: string;
   ollama_model: string;
   ollama_timeout_ms: number;
   ai_context_limit: number;
+  /** AI 응답 언어 (ko: 한국어, en: English, auto: 질문 언어 따름) */
+  ai_reply_language: AiReplyLanguage;
+  /** AI system 프롬프트에 추가되는 사용자 지시사항 */
+  ai_extra_instructions: string;
+  /** thinking 모델의 추론(reasoning) 과정을 채팅에 표시할지 여부 */
+  ai_show_reasoning: boolean;
+  /** RAG 지식 베이스 사용 여부 */
+  rag_enabled: boolean;
+  /** RAG 자동 학습 (/ai Q&A 저장) */
+  rag_auto_learn: boolean;
+  /** Ollama 임베딩 모델명 */
+  rag_embedding_model: string;
+  /** RAG 검색 시 참고할 최대 조각 수 */
+  rag_top_k: number;
+  /** RAG 문서를 불러올 폴더 경로 (로컬/네트워크) */
+  rag_shared_folder: string;
+  /** 마지막 문서 폴더 동기화 시각 (ISO) */
+  rag_last_sync_at: string;
   yona_url: string;
   /** 조회/수정 요청 시 서버가 비워서 응답 — 클라이언트에 평문 노출 방지 */
   yona_token: string;
@@ -35,6 +55,25 @@ export interface AdminSettings {
   jenkins_user: string;
   /** 조회/수정 요청 시 서버가 비워서 응답 — 클라이언트에 평문 노출 방지 */
   jenkins_token: string;
+}
+
+/** RAG 지식 베이스 통계 */
+export interface RagStats {
+  totalChunks: number;
+  qaChunks: number;
+  documentChunks: number;
+  ragEnabled: boolean;
+  ragAutoLearn: boolean;
+  sharedFolder: string;
+  lastSyncAt: string | null;
+}
+
+/** 문서 폴더 RAG 동기화 결과 */
+export interface RagSyncResult {
+  filesProcessed: number;
+  chunksIndexed: number;
+  chunksRemoved: number;
+  errors: string[];
 }
 
 export interface Room {
@@ -144,6 +183,12 @@ export interface BuildStatusResponse {
   status: string;
   durationSec: number | null;
   logUrl: string | null;
+}
+
+/** Ollama 모델 목록 조회 응답 */
+export interface OllamaModelsResponse {
+  url: string;
+  models: string[];
 }
 
 /** 사용 가능한 Ollama 모델 목록 및 연동 활성화 여부 */

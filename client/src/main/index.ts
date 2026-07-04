@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -58,7 +58,19 @@ ipcMain.handle(
   }
 );
 
+/** RAG 문서 폴더 선택 — Windows 탐색기 폴더 선택 대화상자 */
+ipcMain.handle("folder:pick", async (_event, defaultPath?: string): Promise<string | null> => {
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    properties: ["openDirectory"],
+    defaultPath: defaultPath?.trim() || undefined,
+  });
+  if (canceled || filePaths.length === 0) return null;
+  return filePaths[0] ?? null;
+});
+
 app.whenReady().then(() => {
+  // Windows/macOS 기본 애플리케이션 메뉴(File, Edit, View 등) 제거
+  Menu.setApplicationMenu(null);
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

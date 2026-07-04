@@ -15,9 +15,11 @@ import {
   setMessageContent,
 } from "../db/messages.js";
 import { getRoomIdsForUser, isMember, markRoomRead } from "../db/rooms.js";
+import { getSettings } from "../db/settings.js";
 import { logCommand } from "../db/integrations.js";
+import { appendRagContext, buildAiSystemPrompt } from "../services/ai-prompt.js";
 import { chatStream, IntegrationError } from "../services/ollama.js";
-import { config } from "../config.js";
+import { indexQaPair, retrieveRagContext } from "../services/rag.js";
 import { logger } from "../logger.js";
 
 interface SocketData {
@@ -193,12 +195,22 @@ async function handleAiAsk(
   const placeholder = insertAiPlaceholder({ roomId, senderId: userId });
   broadcastMessage(placeholder);
 
-  // 3) 컨텍스트 구성 (FR-31)
-  const history = getContextMessages(roomId, config.ai.contextLimit);
-  const messages = [
-    { role: "system" as const, content: "당신은 사내 업무를 돕는 한국어 AI 어시스턴트입니다. 간결하고 정확하게 답변하세요." },
-    ...history,
-  ];
+  // 3) 컨텍스트 구성 (FR-31) + RAG 참고 지식
+  const aiSettings = getSettings();
+  const history = getContextMessages(roomId, aiSettings.ai_context_limit);
+  let systemPrompt = buildAiSystemPrompt(aiSettings);
+  if (aiSettings.rag_enabled) {
+    try {
+      const ragContext = await retrieveRagContext(content);
+      systemPrompt = appendRagContext(systemPrompt, ragContext);
+    } catch (err) {
+      logger.warn("RAG 검색 실패", {
+        roomId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  const messages = [{ role: "system" as const, content: systemPrompt }, ...history];
 
   const startedAt = Date.now();
   let accumulated = "";
@@ -225,6 +237,14 @@ async function handleAiAsk(
       elapsedMs,
     });
     logCommand({ userId, command: "/ai", parameter: content.slice(0, 200), success: true, elapsedMs });
+    if (aiSettings.rag_enabled && aiSettings.rag_auto_learn) {
+      void indexQaPair(content, accumulated).catch((err) => {
+        logger.warn("RAG Q&A 학습 실패", {
+          roomId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }
   } catch (err) {
     const errorMsg =
       err instanceof IntegrationError ? err.message : "AI 응답 처리 중 오류가 발생했습니다.";

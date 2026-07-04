@@ -34,6 +34,14 @@ export function ChatPage({ currentUser, onLogout }: Props): JSX.Element {
     return list;
   }, []);
 
+  const reloadIntegrations = useCallback(async () => {
+    try {
+      setIntegrations(await fetchIntegrations());
+    } catch {
+      /* 연동 정보 로딩 실패는 채팅 기능에 영향 없음 */
+    }
+  }, []);
+
   // 소켓 연결 및 이벤트 구독
   useEffect(() => {
     const token = getToken();
@@ -88,7 +96,7 @@ export function ChatPage({ currentUser, onLogout }: Props): JSX.Element {
   useEffect(() => {
     void (async () => {
       try {
-        const [roomList] = await Promise.all([reloadRooms(), loadUsers(), loadIntegrations()]);
+        const [roomList] = await Promise.all([reloadRooms(), loadUsers(), reloadIntegrations()]);
         if (roomList.length > 0 && selectedRoomIdRef.current === null) {
           setSelectedRoomId(roomList[0].id);
         }
@@ -99,14 +107,7 @@ export function ChatPage({ currentUser, onLogout }: Props): JSX.Element {
     async function loadUsers(): Promise<void> {
       setUsers(await fetchUsers());
     }
-    async function loadIntegrations(): Promise<void> {
-      try {
-        setIntegrations(await fetchIntegrations());
-      } catch {
-        /* 연동 정보 로딩 실패는 채팅 기능에 영향 없음 */
-      }
-    }
-  }, [reloadRooms, onLogout]);
+  }, [reloadRooms, reloadIntegrations, onLogout]);
 
   function handleSelectRoom(roomId: number): void {
     setSelectedRoomId(roomId);
@@ -131,6 +132,7 @@ export function ChatPage({ currentUser, onLogout }: Props): JSX.Element {
         onSelectRoom={handleSelectRoom}
         onRoomsChanged={reloadRooms}
         onLogout={onLogout}
+        onSettingsSaved={reloadIntegrations}
       />
       {selectedRoom ? (
         <ChatRoom

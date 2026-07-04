@@ -17,6 +17,8 @@ import {
 } from "../db/users.js";
 import { disconnectUser } from "../sockets/index.js";
 import { logger } from "../logger.js";
+import { IntegrationError, listModelsAtUrl } from "../services/ollama.js";
+import { getRagStats, syncSharedFolder } from "../services/rag.js";
 
 export const adminRouter = Router();
 adminRouter.use(requireAuth);
@@ -100,6 +102,25 @@ adminRouter.get("/settings", (_req, res) => {
   res.json(response);
 });
 
+/** Ollama URL에서 사용 가능한 모델 목록 조회 (저장 전 URL 테스트 지원) */
+adminRouter.get("/settings/ollama-models", async (req, res) => {
+  const urlParam = typeof req.query.url === "string" ? req.query.url.trim() : "";
+  const url = urlParam || getSettings().ollama_url.trim();
+  if (!url) {
+    res.status(400).json({ error: "Ollama URL을 입력해 주세요." });
+    return;
+  }
+
+  try {
+    const models = await listModelsAtUrl(url);
+    res.json({ url, models });
+  } catch (err) {
+    const message =
+      err instanceof IntegrationError ? err.message : "모델 목록을 불러오지 못했습니다.";
+    res.status(502).json({ error: message });
+  }
+});
+
 /** 연동 설정 저장 — 마스킹 값("••••••••")은 변경하지 않는다 */
 adminRouter.put("/settings", (req, res) => {
   const schema = z.object({
@@ -107,6 +128,14 @@ adminRouter.put("/settings", (req, res) => {
     ollama_model: z.string().optional(),
     ollama_timeout_ms: z.number().int().positive().optional(),
     ai_context_limit: z.number().int().positive().optional(),
+    ai_reply_language: z.enum(["ko", "en", "auto"]).optional(),
+    ai_extra_instructions: z.string().max(2000).optional(),
+    ai_show_reasoning: z.boolean().optional(),
+    rag_enabled: z.boolean().optional(),
+    rag_auto_learn: z.boolean().optional(),
+    rag_embedding_model: z.string().optional(),
+    rag_top_k: z.number().int().min(1).max(20).optional(),
+    rag_shared_folder: z.string().optional(),
     yona_url: z.string().optional(),
     yona_token: z.string().optional(),
     yona_default_project: z.string().optional(),
@@ -124,10 +153,35 @@ adminRouter.put("/settings", (req, res) => {
   const patch = { ...parsed.data };
   if (patch.yona_token === "••••••••") delete patch.yona_token;
   if (patch.jenkins_token === "••••••••") delete patch.jenkins_token;
+  delete (patch as { rag_last_sync_at?: string }).rag_last_sync_at;
 
   updateSettings(patch);
   logger.info("연동 설정 변경", { updatedKeys: Object.keys(patch) });
   res.json({ ok: true });
+});
+
+/** RAG 지식 베이스 통계 */
+adminRouter.get("/rag/stats", (_req, res) => {
+  res.json(getRagStats());
+});
+
+/** 문서 폴더를 RAG 지식 베이스에 동기화 (요청 body의 folder가 있으면 저장 전 경로도 사용) */
+adminRouter.post("/rag/sync-folder", async (req, res) => {
+  const schema = z.object({ folder: z.string().optional() });
+  const parsed = schema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: "잘못된 요청입니다." });
+    return;
+  }
+
+  try {
+    const result = await syncSharedFolder(parsed.data.folder);
+    res.json(result);
+  } catch (err) {
+    const message =
+      err instanceof IntegrationError ? err.message : "문서 폴더 동기화에 실패했습니다.";
+    res.status(502).json({ error: message });
+  }
 });
 
 /** 계정 삭제 (FR-04) - 세션 즉시 종료 */

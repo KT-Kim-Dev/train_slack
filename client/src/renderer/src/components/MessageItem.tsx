@@ -5,6 +5,7 @@ import { fileUrl } from "../api";
 interface Props {
   message: Message;
   isMine: boolean;
+  isAiStreaming?: boolean;
   onImageClick: (url: string) => void;
 }
 
@@ -30,7 +31,7 @@ function formatSize(bytes: number | null): string {
   return `${size.toFixed(size >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-export function MessageItem({ message, isMine, onImageClick }: Props): JSX.Element {
+export function MessageItem({ message, isMine, isAiStreaming = false, onImageClick }: Props): JSX.Element {
   const [downloading, setDownloading] = useState(false);
   const url = message.fileUrl ? fileUrl(message.fileUrl) : null;
 
@@ -63,7 +64,18 @@ export function MessageItem({ message, isMine, onImageClick }: Props): JSX.Eleme
 
         {isAi && (
           <div className="message-text ai-text">
-            {message.content ? message.content : <span className="ai-typing">생각 중…</span>}
+            {message.content ? (
+              <>
+                {message.content}
+                {isAiStreaming && (
+                  <span className="ai-stream-cursor" aria-label="응답 생성 중">
+                    ▍
+                  </span>
+                )}
+              </>
+            ) : isAiStreaming ? (
+              <AiProgressIndicator />
+            ) : null}
           </div>
         )}
 
@@ -101,6 +113,24 @@ export function MessageItem({ message, isMine, onImageClick }: Props): JSX.Eleme
         )}
       </div>
     </div>
+  );
+}
+
+/** AI 응답 대기/생성 중임을 시각적으로 표시한다 */
+function AiProgressIndicator(): JSX.Element {
+  return (
+    <span className="ai-progress" role="status" aria-live="polite">
+      <span className="ai-progress-spinner" aria-hidden="true" />
+      <span className="ai-progress-text">
+        생각 중
+        <span className="ai-progress-dots" aria-hidden="true">
+          <span>.</span>
+          <span>.</span>
+          <span>.</span>
+        </span>
+      </span>
+      <span className="ai-progress-hint">응답 생성 중</span>
+    </span>
   );
 }
 

@@ -8,6 +8,9 @@ const api = {
   /** 다운로드한 파일 바이트를 사용자가 지정한 위치에 저장 (FR-22) */
   saveFile: (fileName: string, data: ArrayBuffer): Promise<string | null> =>
     ipcRenderer.invoke("file:save", { fileName, data }),
+  /** RAG 문서 폴더 경로 선택 (탐색기) */
+  pickFolder: (defaultPath?: string): Promise<string | null> =>
+    ipcRenderer.invoke("folder:pick", defaultPath),
 };
 
 contextBridge.exposeInMainWorld("intraChat", api);

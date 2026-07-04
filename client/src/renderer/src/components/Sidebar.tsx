@@ -13,6 +13,7 @@ interface Props {
   onSelectRoom: (roomId: number) => void;
   onRoomsChanged: () => Promise<Room[]>;
   onLogout: () => void;
+  onSettingsSaved?: () => void | Promise<void>;
 }
 
 export function Sidebar({
@@ -24,6 +25,7 @@ export function Sidebar({
   onSelectRoom,
   onRoomsChanged,
   onLogout,
+  onSettingsSaved,
 }: Props): JSX.Element {
   const [modalType, setModalType] = useState<"channel" | "group" | null>(null);
   const [showDmPicker, setShowDmPicker] = useState(false);
@@ -141,7 +143,12 @@ export function Sidebar({
       </div>
 
       {showSettings && (
-        <AdminSettingsModal onClose={() => setShowSettings(false)} />
+        <AdminSettingsModal
+          onClose={() => setShowSettings(false)}
+          onSaved={async () => {
+            await onSettingsSaved?.();
+          }}
+        />
       )}
 
       {modalType && (

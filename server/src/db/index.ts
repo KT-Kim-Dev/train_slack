@@ -99,6 +99,20 @@ CREATE TABLE IF NOT EXISTS settings (
   value      TEXT NOT NULL DEFAULT '',
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
+
+-- RAG 지식 베이스 (Q&A 자동 학습 + 공유폴더 문서)
+CREATE TABLE IF NOT EXISTS knowledge_chunks (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_type  TEXT NOT NULL CHECK (source_type IN ('qa','document')),
+  source_key   TEXT NOT NULL,
+  title        TEXT,
+  content      TEXT NOT NULL,
+  embedding    TEXT NOT NULL,
+  created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  UNIQUE(source_type, source_key)
+);
+CREATE INDEX IF NOT EXISTS idx_knowledge_source ON knowledge_chunks (source_type, source_key);
 `;
 
 /** AI 메시지의 발신자로 사용할 시스템 계정 username */
