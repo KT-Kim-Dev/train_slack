@@ -6,6 +6,7 @@ import type { AuthedRequest } from "../auth/middleware.js";
 import { requireAuth } from "../auth/middleware.js";
 import { config } from "../config.js";
 import { getSettings, updateSettings } from "../db/settings.js";
+import { AI_USERNAME } from "../db/index.js";
 import {
   createUser,
   deleteUser,
@@ -15,7 +16,7 @@ import {
   setActive,
   toPublicUser,
 } from "../db/users.js";
-import { disconnectUser } from "../sockets/index.js";
+import { disconnectUser, broadcastUserRemoved, broadcastUserUpdated } from "../sockets/index.js";
 import { logger } from "../logger.js";
 import { IntegrationError, listModelsAtUrl } from "../services/ollama.js";
 import { getRagStats, syncSharedFolder } from "../services/rag.js";
@@ -32,9 +33,13 @@ adminRouter.use((req: AuthedRequest, res, next) => {
   next();
 });
 
-/** 전체 사용자 목록 (활성/비활성 포함) */
+/** 전체 사용자 목록 (활성/비활성 포함, AI 시스템 계정 제외) */
 adminRouter.get("/users", (_req, res) => {
-  res.json(listUsers().map(toPublicUser));
+  res.json(
+    listUsers()
+      .filter((u) => u.username !== AI_USERNAME)
+      .map((u) => ({ ...toPublicUser(u), isActive: u.is_active === 1 }))
+  );
 });
 
 /** 계정 생성 (FR-01, CLI 대안) */
@@ -60,6 +65,7 @@ adminRouter.post("/users", async (req, res) => {
     displayName: parsed.data.displayName,
   });
   logger.info("관리자 계정 생성", { userId: user.id, username: user.username });
+  broadcastUserUpdated(toPublicUser(user));
   res.status(201).json(toPublicUser(user));
 });
 
@@ -72,6 +78,7 @@ adminRouter.post("/users/:id/deactivate", (req, res) => {
   }
   setActive(id, false);
   disconnectUser(id);
+  broadcastUserRemoved(id);
   logger.info("계정 비활성화", { userId: id });
   res.json({ ok: true });
 });
@@ -84,6 +91,8 @@ adminRouter.post("/users/:id/activate", (req, res) => {
     return;
   }
   setActive(id, true);
+  const user = getUserById(id)!;
+  broadcastUserUpdated(toPublicUser(user));
   res.json({ ok: true });
 });
 
@@ -135,7 +144,6 @@ adminRouter.put("/settings", (req, res) => {
     rag_auto_learn: z.boolean().optional(),
     rag_embedding_model: z.string().optional(),
     rag_top_k: z.number().int().min(1).max(20).optional(),
-    rag_shared_folder: z.string().optional(),
     yona_url: z.string().optional(),
     yona_token: z.string().optional(),
     yona_default_project: z.string().optional(),
@@ -154,6 +162,7 @@ adminRouter.put("/settings", (req, res) => {
   if (patch.yona_token === "••••••••") delete patch.yona_token;
   if (patch.jenkins_token === "••••••••") delete patch.jenkins_token;
   delete (patch as { rag_last_sync_at?: string }).rag_last_sync_at;
+  delete (patch as { rag_shared_folder?: string }).rag_shared_folder;
 
   updateSettings(patch);
   logger.info("연동 설정 변경", { updatedKeys: Object.keys(patch) });
@@ -165,17 +174,10 @@ adminRouter.get("/rag/stats", (_req, res) => {
   res.json(getRagStats());
 });
 
-/** 문서 폴더를 RAG 지식 베이스에 동기화 (요청 body의 folder가 있으면 저장 전 경로도 사용) */
-adminRouter.post("/rag/sync-folder", async (req, res) => {
-  const schema = z.object({ folder: z.string().optional() });
-  const parsed = schema.safeParse(req.body ?? {});
-  if (!parsed.success) {
-    res.status(400).json({ error: "잘못된 요청입니다." });
-    return;
-  }
-
+/** 서버 RAG 폴더를 RAG 지식 베이스에 동기화 (변경된 파일만 재색인) */
+adminRouter.post("/rag/sync-folder", async (_req, res) => {
   try {
-    const result = await syncSharedFolder(parsed.data.folder);
+    const result = await syncSharedFolder();
     res.json(result);
   } catch (err) {
     const message =
@@ -185,14 +187,24 @@ adminRouter.post("/rag/sync-folder", async (req, res) => {
 });
 
 /** 계정 삭제 (FR-04) - 세션 즉시 종료 */
-adminRouter.delete("/users/:id", (req, res) => {
+adminRouter.delete("/users/:id", (req: AuthedRequest, res) => {
   const id = Number(req.params.id);
-  if (!getUserById(id)) {
+  const target = getUserById(id);
+  if (!target) {
     res.status(404).json({ error: "사용자를 찾을 수 없습니다." });
+    return;
+  }
+  if (target.username === AI_USERNAME) {
+    res.status(400).json({ error: "시스템 계정은 삭제할 수 없습니다." });
+    return;
+  }
+  if (id === req.auth!.userId) {
+    res.status(400).json({ error: "본인 계정은 삭제할 수 없습니다." });
     return;
   }
   disconnectUser(id);
   deleteUser(id);
+  broadcastUserRemoved(id);
   logger.info("계정 삭제", { userId: id });
   res.json({ ok: true });
 });

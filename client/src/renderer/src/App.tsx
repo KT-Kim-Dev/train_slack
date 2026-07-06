@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { PublicUser } from "@intra-chat/shared";
 import { LoginPage } from "./components/LoginPage";
 import { ChatPage } from "./components/ChatPage";
-import { clearSession, getStoredUser, getToken } from "./api";
+import { clearSession, getStoredUser, getToken, updateStoredUser } from "./api";
 
 export function App(): JSX.Element {
   const [user, setUser] = useState<PublicUser | null>(null);
@@ -18,21 +18,26 @@ export function App(): JSX.Element {
     setBooting(false);
   }, []);
 
-  function handleLoggedIn(loggedInUser: PublicUser): void {
+  const handleLoggedIn = useCallback((loggedInUser: PublicUser): void => {
     setUser(loggedInUser);
-  }
+  }, []);
 
-  function handleLogout(): void {
+  const handleLogout = useCallback((): void => {
     clearSession();
     setUser(null);
-  }
+  }, []);
+
+  const handleUserUpdated = useCallback((updated: PublicUser): void => {
+    setUser(updated);
+    updateStoredUser(updated);
+  }, []);
 
   if (booting) {
     return <div className="center-screen">불러오는 중...</div>;
   }
 
   return user ? (
-    <ChatPage currentUser={user} onLogout={handleLogout} />
+    <ChatPage currentUser={user} onLogout={handleLogout} onUserUpdated={handleUserUpdated} />
   ) : (
     <LoginPage onLoggedIn={handleLoggedIn} />
   );

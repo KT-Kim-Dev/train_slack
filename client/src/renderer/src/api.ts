@@ -1,5 +1,6 @@
 import type {
   AdminSettings,
+  AdminUserView,
   BuildStartResponse,
   BuildStatusResponse,
   CreateIssueRequest,
@@ -14,6 +15,7 @@ import type {
   RagStats,
   RagSyncResult,
   Room,
+  UserPresenceStatus,
 } from "@intra-chat/shared";
 import { SERVER_URL } from "./config";
 
@@ -26,7 +28,19 @@ export function getToken(): string | null {
 
 export function getStoredUser(): PublicUser | null {
   const raw = localStorage.getItem(USER_KEY);
-  return raw ? (JSON.parse(raw) as PublicUser) : null;
+  if (!raw) return null;
+  const parsed = JSON.parse(raw) as Partial<PublicUser>;
+  if (parsed.id == null || !parsed.username || !parsed.displayName) return null;
+  return {
+    id: parsed.id,
+    username: parsed.username,
+    displayName: parsed.displayName,
+    isOnline: parsed.isOnline ?? false,
+    lastSeen: parsed.lastSeen ?? null,
+    isAdmin: parsed.isAdmin ?? false,
+    profileImageUrl: parsed.profileImageUrl ?? null,
+    presenceStatus: parsed.presenceStatus ?? "available",
+  };
 }
 
 export function saveSession(res: LoginResponse): void {
@@ -37,6 +51,10 @@ export function saveSession(res: LoginResponse): void {
 export function clearSession(): void {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
+}
+
+export function updateStoredUser(user: PublicUser): void {
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
 }
 
 class ApiError extends Error {}
@@ -83,6 +101,49 @@ export async function fetchUsers(): Promise<PublicUser[]> {
   return request<PublicUser[]>("/api/users");
 }
 
+export async function updateMyStatus(status: UserPresenceStatus): Promise<PublicUser> {
+  return request<PublicUser>("/api/users/me/status", {
+    method: "PUT",
+    body: JSON.stringify({ status }),
+  });
+}
+
+/** 프로필 이미지 URL (쿼리 토큰 + 캐시 무효화) */
+export function avatarUrl(userId: number, cacheBust?: string | number): string {
+  const token = getToken();
+  const v = cacheBust != null ? `&v=${encodeURIComponent(String(cacheBust))}` : "";
+  return `${SERVER_URL}/api/users/${userId}/avatar?token=${encodeURIComponent(token ?? "")}${v}`;
+}
+
+export function uploadAvatar(file: File): Promise<PublicUser> {
+  return new Promise((resolve, reject) => {
+    const form = new FormData();
+    form.append("avatar", file);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${SERVER_URL}/api/users/me/avatar`);
+    const token = getToken();
+    if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+
+    xhr.addEventListener("load", () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(JSON.parse(xhr.responseText) as PublicUser);
+      } else {
+        let message = `업로드 실패 (${xhr.status})`;
+        try {
+          const body = JSON.parse(xhr.responseText);
+          if (body?.error) message = body.error;
+        } catch {
+          /* 무시 */
+        }
+        reject(new ApiError(message));
+      }
+    });
+    xhr.addEventListener("error", () => reject(new ApiError("네트워크 오류로 업로드에 실패했습니다.")));
+    xhr.send(form);
+  });
+}
+
 export async function createChannel(name: string, memberIds: number[]): Promise<Room> {
   return request<Room>("/api/rooms/channel", {
     method: "POST",
@@ -106,6 +167,44 @@ export async function createDm(userId: number): Promise<Room> {
 
 export async function leaveRoom(roomId: number): Promise<void> {
   await request(`/api/rooms/${roomId}/leave`, { method: "POST" });
+}
+
+export async function fetchRoomMembers(roomId: number): Promise<PublicUser[]> {
+  return request<PublicUser[]>(`/api/rooms/${roomId}/members`);
+}
+
+export async function addRoomMembers(roomId: number, memberIds: number[]): Promise<void> {
+  await request(`/api/rooms/${roomId}/members`, {
+    method: "POST",
+    body: JSON.stringify({ memberIds }),
+  });
+}
+
+export async function fetchAdminUsers(): Promise<AdminUserView[]> {
+  return request<AdminUserView[]>("/api/admin/users");
+}
+
+export async function createAdminUser(params: {
+  username: string;
+  password: string;
+  displayName: string;
+}): Promise<AdminUserView> {
+  return request<AdminUserView>("/api/admin/users", {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}
+
+export async function deactivateAdminUser(userId: number): Promise<void> {
+  await request(`/api/admin/users/${userId}/deactivate`, { method: "POST" });
+}
+
+export async function activateAdminUser(userId: number): Promise<void> {
+  await request(`/api/admin/users/${userId}/activate`, { method: "POST" });
+}
+
+export async function deleteAdminUser(userId: number): Promise<void> {
+  await request(`/api/admin/users/${userId}`, { method: "DELETE" });
 }
 
 export async function markRoomRead(roomId: number, lastMessageId: number): Promise<void> {
@@ -144,11 +243,10 @@ export async function fetchRagStats(): Promise<RagStats> {
   return request<RagStats>("/api/admin/rag/stats");
 }
 
-export async function syncRagFolder(folder?: string): Promise<RagSyncResult> {
-  const trimmed = folder?.trim();
+export async function syncRagFolder(): Promise<RagSyncResult> {
   return request<RagSyncResult>("/api/admin/rag/sync-folder", {
     method: "POST",
-    body: JSON.stringify(trimmed ? { folder: trimmed } : {}),
+    body: JSON.stringify({}),
   });
 }
 

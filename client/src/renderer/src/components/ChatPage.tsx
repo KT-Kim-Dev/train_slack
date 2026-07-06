@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AiDeltaEvent, IntegrationsInfo, Message, PublicUser, Room } from "@intra-chat/shared";
-import { fetchIntegrations, fetchRooms, fetchUsers, getToken } from "../api";
+import { fetchIntegrations, fetchRooms, fetchUsers, getToken, updateStoredUser } from "../api";
+import { notifyIncomingMessage, roomNotificationLabel } from "../notifications";
 import { connectSocket, disconnectSocket } from "../socket";
+import { sortUsers } from "../utils/sortUsers";
 import { Sidebar } from "./Sidebar";
 import { ChatRoom } from "./ChatRoom";
+import { ToastStack } from "./ToastStack";
 
 /** 활성 채팅방이 등록하는 실시간 이벤트 핸들러 */
 export interface ActiveRoomHandlers {
@@ -14,9 +17,10 @@ export interface ActiveRoomHandlers {
 interface Props {
   currentUser: PublicUser;
   onLogout: () => void;
+  onUserUpdated: (user: PublicUser) => void;
 }
 
-export function ChatPage({ currentUser, onLogout }: Props): JSX.Element {
+export function ChatPage({ currentUser, onLogout, onUserUpdated }: Props): JSX.Element {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [users, setUsers] = useState<PublicUser[]>([]);
   const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null);
@@ -26,7 +30,29 @@ export function ChatPage({ currentUser, onLogout }: Props): JSX.Element {
   // 활성 방으로 들어온 실시간 이벤트를 ChatRoom 에 전달하기 위한 콜백 등록소
   const activeRoomHandler = useRef<ActiveRoomHandlers | null>(null);
   const selectedRoomIdRef = useRef<number | null>(null);
+  const currentUserIdRef = useRef(currentUser.id);
+  const roomsRef = useRef<Room[]>([]);
+  const usersRef = useRef<PublicUser[]>([]);
+  const onUserUpdatedRef = useRef(onUserUpdated);
+  const onLogoutRef = useRef(onLogout);
   selectedRoomIdRef.current = selectedRoomId;
+  currentUserIdRef.current = currentUser.id;
+  roomsRef.current = rooms;
+  usersRef.current = users;
+  onUserUpdatedRef.current = onUserUpdated;
+  onLogoutRef.current = onLogout;
+
+  /** presence(온라인/상태)는 users 목록, 프로필(아바타 등)은 App 세션과 병합 */
+  const liveFromList = users.find((u) => u.id === currentUser.id);
+  const liveCurrentUser: PublicUser = liveFromList
+    ? {
+        ...currentUser,
+        isOnline: liveFromList.isOnline,
+        lastSeen: liveFromList.lastSeen,
+        presenceStatus: liveFromList.presenceStatus,
+        profileImageUrl: liveFromList.profileImageUrl ?? currentUser.profileImageUrl,
+      }
+    : currentUser;
 
   const reloadRooms = useCallback(async () => {
     const list = await fetchRooms();
@@ -46,7 +72,7 @@ export function ChatPage({ currentUser, onLogout }: Props): JSX.Element {
   useEffect(() => {
     const token = getToken();
     if (!token) {
-      onLogout();
+      onLogoutRef.current();
       return;
     }
     const socket = connectSocket(token);
@@ -54,7 +80,7 @@ export function ChatPage({ currentUser, onLogout }: Props): JSX.Element {
     socket.on("connect_error", (err) => {
       // 계정 비활성화/삭제 등으로 인증 실패 시 로그아웃 (FR-04)
       setConnectionError(err.message);
-      if (/토큰|계정|인증/.test(err.message)) onLogout();
+      if (/토큰|계정|인증/.test(err.message)) onLogoutRef.current();
     });
     socket.on("connect", () => setConnectionError(null));
 
@@ -62,12 +88,19 @@ export function ChatPage({ currentUser, onLogout }: Props): JSX.Element {
       if (message.roomId === selectedRoomIdRef.current && activeRoomHandler.current) {
         activeRoomHandler.current.onMessage(message);
       } else {
-        // 다른 방 메시지는 미읽음 배지 증가 (FR-09)
         setRooms((prev) =>
           prev.map((r) =>
             r.id === message.roomId ? { ...r, unreadCount: (r.unreadCount ?? 0) + 1 } : r
           )
         );
+
+        if (message.senderId !== currentUserIdRef.current) {
+          const room = roomsRef.current.find((r) => r.id === message.roomId);
+          if (room && (room.type === "channel" || room.type === "dm" || room.type === "group")) {
+            const label = roomNotificationLabel(room, usersRef.current, currentUserIdRef.current);
+            notifyIncomingMessage({ room, message, roomLabel: label });
+          }
+        }
       }
     });
 
@@ -77,20 +110,62 @@ export function ChatPage({ currentUser, onLogout }: Props): JSX.Element {
       }
     });
 
-    socket.on("presence:update", ({ userId, isOnline, lastSeen }) => {
+    socket.on("presence:update", ({ userId, isOnline, lastSeen, presenceStatus }) => {
       setUsers((prev) =>
-        prev.map((u) => (u.id === userId ? { ...u, isOnline, lastSeen } : u))
+        prev.map((u) =>
+          u.id === userId ? { ...u, isOnline, lastSeen, presenceStatus } : u
+        )
       );
+    });
+
+    socket.on("user:updated", (user) => {
+      setUsers((prev) => {
+        const idx = prev.findIndex((u) => u.id === user.id);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = user;
+          return next;
+        }
+        return sortUsers([...prev, user]);
+      });
+      if (user.id === currentUserIdRef.current) {
+        onUserUpdatedRef.current(user);
+        updateStoredUser(user);
+      }
+    });
+
+    socket.on("user:removed", ({ userId }) => {
+      setUsers((prev) => prev.filter((u) => u.id !== userId));
     });
 
     socket.on("room:created", (room) => {
       setRooms((prev) => (prev.some((r) => r.id === room.id) ? prev : [...prev, room]));
     });
 
+    socket.on("room:unhidden", (room) => {
+      setRooms((prev) => {
+        const idx = prev.findIndex((r) => r.id === room.id);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = room;
+          return next;
+        }
+        return [...prev, room];
+      });
+    });
+
     return () => {
       disconnectSocket();
     };
-  }, [onLogout]);
+  }, []);
+
+  // OS 알림 클릭 시 해당 방으로 이동
+  useEffect(() => {
+    const unsub = window.intraChat?.onNotificationNavigate?.((roomId) => {
+      handleSelectRoom(roomId);
+    });
+    return () => unsub?.();
+  }, []);
 
   // 초기 데이터 로딩
   useEffect(() => {
@@ -126,25 +201,31 @@ export function ChatPage({ currentUser, onLogout }: Props): JSX.Element {
       <Sidebar
         rooms={rooms}
         users={users}
-        currentUser={currentUser}
+        currentUser={liveCurrentUser}
         selectedRoomId={selectedRoomId}
         connectionError={connectionError}
         onSelectRoom={handleSelectRoom}
         onRoomsChanged={reloadRooms}
         onLogout={onLogout}
         onSettingsSaved={reloadIntegrations}
+        onUserUpdated={(user) => {
+          onUserUpdated(user);
+          updateStoredUser(user);
+        }}
       />
       {selectedRoom ? (
         <ChatRoom
           key={selectedRoom.id}
           room={selectedRoom}
-          currentUser={currentUser}
+          currentUser={liveCurrentUser}
+          users={users}
           integrations={integrations}
           registerActiveHandler={registerActiveHandler}
         />
       ) : (
         <div className="empty-room">왼쪽에서 채팅방을 선택하거나 새로 만들어 보세요.</div>
       )}
+      <ToastStack onSelectRoom={handleSelectRoom} />
     </div>
   );
 }

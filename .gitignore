@@ -23,12 +23,19 @@ data/
 # 업로드된 파일 (개발용 로컬 저장소)
 uploads/
 
+# RAG 런타임 데이터 (서버 실행 폴더에서 자동 생성)
+server/RAG/
+
 # 환경 변수
 .env
 .env.local
+client/.env.production
 
 # 임시 검증 산출물
 .tmp/
+
+# 패키징 캐시 (Node.js win-x64 다운로드)
+.cache/
 
 # OS / 에디터
 .DS_Store

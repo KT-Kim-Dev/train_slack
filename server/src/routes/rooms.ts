@@ -8,16 +8,19 @@ import {
   findDmRoom,
   getMemberIds,
   getRoomById,
+  getUnreadCountForUser,
   hideRoom,
   isMember,
   listRoomsForUser,
   markRoomRead,
   removeMember,
   toRoom,
+  unhideDmRecipients,
 } from "../db/rooms.js";
-import { getUserById } from "../db/users.js";
+import { AI_USERNAME } from "../db/index.js";
+import { getUserById, toPublicUser } from "../db/users.js";
 import { getMessagePage } from "../db/messages.js";
-import { notifyRoomCreated } from "../sockets/index.js";
+import { notifyRoomCreated, notifyRoomUnhidden } from "../sockets/index.js";
 import { logger } from "../logger.js";
 
 export const roomsRouter = Router();
@@ -158,6 +161,42 @@ roomsRouter.post("/:id/leave", (req: AuthedRequest, res) => {
   res.json({ ok: true });
 });
 
+/** 그룹채팅에 멤버 추가 */
+roomsRouter.post("/:id/members", (req: AuthedRequest, res) => {
+  const roomId = Number(req.params.id);
+  const room = getRoomById(roomId);
+  if (!room || room.type !== "group") {
+    res.status(400).json({ error: "그룹채팅에만 멤버를 추가할 수 있습니다." });
+    return;
+  }
+  if (!isMember(roomId, req.auth!.userId)) {
+    res.status(403).json({ error: "이 방의 참여자가 아닙니다." });
+    return;
+  }
+  const schema = z.object({ memberIds: z.array(z.number().int()).min(1) });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "추가할 멤버 ID가 필요합니다." });
+    return;
+  }
+  const added: number[] = [];
+  for (const uid of parsed.data.memberIds) {
+    if (uid === req.auth!.userId) continue;
+    const user = getUserById(uid);
+    if (!user || user.is_active !== 1 || user.username === AI_USERNAME) continue;
+    if (!isMember(roomId, uid)) {
+      addMember(roomId, uid);
+      added.push(uid);
+    }
+  }
+  if (added.length > 0) {
+    const roomDto = toRoom(room, 0);
+    notifyRoomCreated(roomDto, added);
+    logger.info("그룹 멤버 추가", { roomId, added });
+  }
+  res.json({ ok: true, added });
+});
+
 /** 방 참여자 목록 */
 roomsRouter.get("/:id/members", (req: AuthedRequest, res) => {
   const roomId = Number(req.params.id);
@@ -168,7 +207,7 @@ roomsRouter.get("/:id/members", (req: AuthedRequest, res) => {
   const ids = getMemberIds(roomId);
   const users = ids
     .map((id) => getUserById(id))
-    .filter((u): u is NonNullable<typeof u> => !!u)
-    .map((u) => ({ id: u.id, displayName: u.display_name, isOnline: u.is_online === 1 }));
+    .filter((u): u is NonNullable<typeof u> => !!u && u.username !== AI_USERNAME)
+    .map((u) => toPublicUser(u));
   res.json(users);
 });

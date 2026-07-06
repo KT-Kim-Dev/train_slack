@@ -156,6 +156,40 @@ export function getContextMessages(
     }));
 }
 
+/** RAG 대화보내기용 — 방의 전체 메시지를 시간순으로 조회 */
+export function getMessagesForRagExport(roomId: number): {
+  messageType: MessageType;
+  content: string | null;
+  fileName: string | null;
+  senderName: string;
+  createdAt: string;
+}[] {
+  const rows = db
+    .prepare(
+      `SELECT m.message_type, m.content, m.file_name,
+              COALESCE(u.display_name, '알 수 없음') AS sender_name,
+              m.created_at
+       FROM messages m
+       LEFT JOIN users u ON u.id = m.sender_id
+       WHERE m.room_id = ?
+       ORDER BY m.id ASC`
+    )
+    .all(roomId) as {
+    message_type: MessageType;
+    content: string | null;
+    file_name: string | null;
+    sender_name: string;
+    created_at: string;
+  }[];
+  return rows.map((row) => ({
+    messageType: row.message_type,
+    content: row.content,
+    fileName: row.file_name,
+    senderName: row.sender_name,
+    createdAt: row.created_at,
+  }));
+}
+
 /**
  * 히스토리 페이지네이션 (FR-13).
  * cursor 가 주어지면 그 id 보다 오래된(작은) 메시지를 최신순으로 limit 개 조회한다.

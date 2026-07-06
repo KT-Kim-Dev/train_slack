@@ -13,9 +13,15 @@
     "server:create-user": "npm run create-user -w server",
     "client:dev": "npm run dev -w client",
     "client:build": "npm run build -w client",
+    "package:server:win": "node scripts/package-server-win.mjs",
+    "package:client:win": "node scripts/package-client-win.mjs",
+    "package:win": "node scripts/package-server-win.mjs && node scripts/package-client-win.mjs",
     "dev": "echo '서버는 npm run server:dev, 클라이언트는 npm run client:dev 로 각각 실행하세요.'"
   },
   "engines": {
     "node": ">=18"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
   }
 }

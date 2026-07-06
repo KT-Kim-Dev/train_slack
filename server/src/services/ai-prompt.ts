@@ -26,12 +26,13 @@ export function buildAiSystemPrompt(
   return parts.join(" ");
 }
 
-/** RAG 검색 결과를 system 프롬프트에 붙인다 */
+/** RAG 검색 결과를 system 프롬프트에 붙인다 (참고용 — 없거나 부적합하면 무시 가능) */
 export function appendRagContext(systemPrompt: string, ragContext: string | null): string {
   if (!ragContext) return systemPrompt;
   return (
     `${systemPrompt}\n\n` +
-    "아래는 사내 지식 베이스에서 검색한 참고 자료입니다. 관련 내용이 있으면 우선 참고하세요.\n" +
+    "아래는 사내 지식 베이스에서 검색한 참고 자료입니다. 관련 내용이 있으면 참고하되, " +
+    "없거나 부족하면 일반 지식으로 답변하세요. 참고 자료만으로 답을 거부하지 마세요.\n" +
     ragContext
   );
 }

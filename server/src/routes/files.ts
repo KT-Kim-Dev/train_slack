@@ -11,8 +11,11 @@ import { getUserById } from "../db/users.js";
 import { config } from "../config.js";
 import { isMember, markRoomRead } from "../db/rooms.js";
 import { getFileMeta, insertFileMessage } from "../db/messages.js";
+import { getRoomById } from "../db/rooms.js";
 import { broadcastMessage } from "../sockets/index.js";
+import { copyAiUploadToRag, scheduleRoomConversationExport } from "../services/rag-export.js";
 import { logger } from "../logger.js";
+import { decodeUploadFileName } from "../utils/filename.js";
 
 export const filesRouter = Router();
 
@@ -96,19 +99,32 @@ function handleUploaded(req: AuthedRequest, res: import("express").Response, roo
     return;
   }
   const senderId = req.auth!.userId;
+  const room = getRoomById(roomId);
   const created = files.map((f) => {
     const messageType = IMAGE_MIME.test(f.mimetype) ? "image" : "file";
     const message = insertFileMessage({
       roomId,
       senderId,
       messageType,
-      fileName: f.originalname,
+      fileName: decodeUploadFileName(f.originalname),
       filePath: f.path,
       fileSize: f.size,
     });
     broadcastMessage(message);
     return message;
   });
+
+  if (room?.type === "ai") {
+    for (const f of files) {
+      void copyAiUploadToRag(f.path, decodeUploadFileName(f.originalname)).catch((err) => {
+        logger.warn("AI 업로드 RAG 저장 실패", {
+          roomId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }
+  }
+  scheduleRoomConversationExport(roomId);
   const last = created[created.length - 1];
   markRoomRead(roomId, senderId, last.id);
   logger.info("파일 업로드", { roomId, senderId, count: created.length });

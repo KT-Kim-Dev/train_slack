@@ -5,6 +5,7 @@ import { askAi, sendMessage } from "../socket";
 import { parseCommand } from "../commands";
 import { MessageItem } from "./MessageItem";
 import { MessageInput } from "./MessageInput";
+import { GroupMembersModal } from "./GroupMembersModal";
 import { ImageLightbox } from "./ImageLightbox";
 import { IssueCreateModal } from "./IssueCreateModal";
 import { BuildConfirmModal } from "./BuildConfirmModal";
@@ -13,11 +14,12 @@ import type { ActiveRoomHandlers } from "./ChatPage";
 interface Props {
   room: Room;
   currentUser: PublicUser;
+  users: PublicUser[];
   integrations: IntegrationsInfo | null;
   registerActiveHandler: (handlers: ActiveRoomHandlers | null) => void;
 }
 
-export function ChatRoom({ room, currentUser, integrations, registerActiveHandler }: Props): JSX.Element {
+export function ChatRoom({ room, currentUser, users, integrations, registerActiveHandler }: Props): JSX.Element {
   const [messages, setMessages] = useState<Message[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [nextCursor, setNextCursor] = useState<number | null>(null);
@@ -27,6 +29,8 @@ export function ChatRoom({ room, currentUser, integrations, registerActiveHandle
   const [buildToConfirm, setBuildToConfirm] = useState<string | null>(null);
   const [streamingAiIds, setStreamingAiIds] = useState<Set<number>>(() => new Set());
 
+  const [showGroupMembers, setShowGroupMembers] = useState(false);
+  const [groupMembersAddMode, setGroupMembersAddMode] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const nearBottomRef = useRef(true);
 
@@ -182,6 +186,32 @@ export function ChatRoom({ room, currentUser, integrations, registerActiveHandle
     <section className="chat-room">
       <header className="chat-room-header">
         <span className="chat-room-title">{roomTitle}</span>
+        {room.type === "group" && (
+          <div className="chat-room-header-actions">
+            <button
+              type="button"
+              className="header-icon-btn"
+              title="멤버 목록"
+              onClick={() => {
+                setGroupMembersAddMode(false);
+                setShowGroupMembers(true);
+              }}
+            >
+              👥
+            </button>
+            <button
+              type="button"
+              className="header-icon-btn"
+              title="멤버 추가"
+              onClick={() => {
+                setGroupMembersAddMode(true);
+                setShowGroupMembers(true);
+              }}
+            >
+              +
+            </button>
+          </div>
+        )}
       </header>
 
       <div className="messages" ref={scrollRef} onScroll={handleScroll}>
@@ -223,6 +253,15 @@ export function ChatRoom({ room, currentUser, integrations, registerActiveHandle
           project={buildToConfirm}
           roomId={room.id}
           onClose={() => setBuildToConfirm(null)}
+        />
+      )}
+      {showGroupMembers && (
+        <GroupMembersModal
+          room={room}
+          allUsers={users}
+          currentUserId={currentUser.id}
+          initialShowAdd={groupMembersAddMode}
+          onClose={() => setShowGroupMembers(false)}
         />
       )}
     </section>

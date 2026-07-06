@@ -11,6 +11,15 @@
 export type RoomType = "channel" | "group" | "dm" | "ai";
 export type MessageType = "text" | "file" | "image" | "ai_response" | "card";
 
+/** 사용자가 설정하는 온라인 상태 (대화가능/바쁨/자리비움) */
+export type UserPresenceStatus = "available" | "busy" | "away";
+
+export const PRESENCE_STATUS_LABELS: Record<UserPresenceStatus, string> = {
+  available: "대화 가능",
+  busy: "바쁨",
+  away: "자리 비움",
+};
+
 /** 다른 사용자에게 노출 가능한 사용자 공개 정보 (비밀번호 해시 제외) */
 export interface PublicUser {
   id: number;
@@ -19,6 +28,10 @@ export interface PublicUser {
   isOnline: boolean;
   lastSeen: string | null;
   isAdmin: boolean;
+  /** 프로필 이미지 URL (없으면 null → 이니셜 아바타 표시) */
+  profileImageUrl: string | null;
+  /** 온라인일 때 표시할 사용자 상태 */
+  presenceStatus: UserPresenceStatus;
 }
 
 export type AiReplyLanguage = "ko" | "en" | "auto";
@@ -68,9 +81,18 @@ export interface RagStats {
   lastSyncAt: string | null;
 }
 
+/** 관리자 사용자 목록 (활성 여부 포함) */
+export interface AdminUserView extends PublicUser {
+  isActive: boolean;
+}
+
 /** 문서 폴더 RAG 동기화 결과 */
 export interface RagSyncResult {
   filesProcessed: number;
+  /** 변경·신규로 재색인한 파일 수 */
+  filesUpdated: number;
+  /** 변경 없어 건너뛴 파일 수 */
+  filesSkipped: number;
   chunksIndexed: number;
   chunksRemoved: number;
   errors: string[];
@@ -215,8 +237,19 @@ export interface AiDeltaEvent {
 /** 서버 -> 클라이언트 이벤트 */
 export interface ServerToClientEvents {
   "message:new": (message: Message) => void;
-  "presence:update": (payload: { userId: number; isOnline: boolean; lastSeen: string | null }) => void;
+  "presence:update": (payload: {
+    userId: number;
+    isOnline: boolean;
+    lastSeen: string | null;
+    presenceStatus: UserPresenceStatus;
+  }) => void;
+  /** 프로필/상태 변경 또는 신규 사용자 추가 시 전체 사용자 정보 갱신 */
+  "user:updated": (user: PublicUser) => void;
+  /** 계정 삭제/비활성화 시 사이드바 목록에서 제거 */
+  "user:removed": (payload: { userId: number }) => void;
   "room:created": (room: Room) => void;
+  /** 숨긴 DM 등이 새 메시지로 다시 목록에 나타날 때 */
+  "room:unhidden": (room: Room) => void;
   "ai:delta": (payload: AiDeltaEvent) => void;
   "error": (payload: { message: string }) => void;
 }

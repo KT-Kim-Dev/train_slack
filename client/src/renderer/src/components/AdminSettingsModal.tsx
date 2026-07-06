@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
 import type { AdminSettings } from "@intra-chat/shared";
 import { fetchAdminSettings, fetchOllamaModels, fetchRagStats, saveAdminSettings, syncRagFolder } from "../api";
+import { AdminUsersTab } from "./AdminUsersTab";
 
 interface Props {
+  currentUserId: number;
   onClose: () => void;
   onSaved?: () => void | Promise<void>;
 }
 
-type Tab = "ai" | "yona" | "jenkins";
+type Tab = "ai" | "yona" | "jenkins" | "users";
 
 const PLACEHOLDER_TOKEN = "••••••••";
 
-export function AdminSettingsModal({ onClose, onSaved }: Props): JSX.Element {
+export function AdminSettingsModal({ currentUserId, onClose, onSaved }: Props): JSX.Element {
   const [tab, setTab] = useState<Tab>("ai");
   const [settings, setSettings] = useState<AdminSettings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -64,6 +66,9 @@ export function AdminSettingsModal({ onClose, onSaved }: Props): JSX.Element {
           <button className={tab === "jenkins" ? "active" : ""} onClick={() => setTab("jenkins")}>
             🔧 Jenkins
           </button>
+          <button className={tab === "users" ? "active" : ""} onClick={() => setTab("users")}>
+            👤 사용자
+          </button>
         </div>
 
         {loading && <div className="settings-loading">설정 불러오는 중...</div>}
@@ -79,6 +84,7 @@ export function AdminSettingsModal({ onClose, onSaved }: Props): JSX.Element {
             {tab === "jenkins" && (
               <JenkinsTab settings={settings} onChange={set} />
             )}
+            {tab === "users" && <AdminUsersTab currentUserId={currentUserId} />}
           </div>
         )}
 
@@ -167,31 +173,16 @@ function AiTab({
       .catch(() => undefined);
   }, []);
 
-  async function handlePickFolder(): Promise<void> {
-    try {
-      const picked = await window.intraChat.pickFolder(settings.rag_shared_folder.trim() || undefined);
-      if (picked) onChange("rag_shared_folder", picked);
-    } catch {
-      setRagSyncMessage("폴더 선택 대화상자를 열 수 없습니다.");
-    }
-  }
-
   async function handleSyncFolder(): Promise<void> {
-    const folder = settings.rag_shared_folder.trim();
-    if (!folder) {
-      setRagSyncMessage("문서 폴더 경로를 입력하거나 찾아보기로 선택해 주세요.");
-      return;
-    }
-
     setRagSyncing(true);
     setRagSyncMessage(null);
     try {
-      const result = await syncRagFolder(folder);
+      const result = await syncRagFolder();
       const [stats] = await Promise.all([fetchRagStats()]);
       setRagStats(stats);
       const errorPart = result.errors.length > 0 ? ` (오류 ${result.errors.length}건)` : "";
       setRagSyncMessage(
-        `동기화 완료: 파일 ${result.filesProcessed}개, 조각 ${result.chunksIndexed}개 저장, ${result.chunksRemoved}개 삭제${errorPart}`
+        `동기화 완료: 전체 ${result.filesProcessed}개 중 갱신 ${result.filesUpdated}개, 건너뜀 ${result.filesSkipped}개, 조각 ${result.chunksIndexed}개 저장, ${result.chunksRemoved}개 삭제${errorPart}`
       );
     } catch (err) {
       setRagSyncMessage(err instanceof Error ? err.message : "동기화에 실패했습니다.");
@@ -312,9 +303,9 @@ function AiTab({
           onChange={(e) => onChange("ai_show_reasoning", e.target.checked)}
         />
         <span>
-          <b>추론 과정 표시</b>
+          <b>AI 추론하기</b>
           <span className="field-hint">
-            {" "}— thinking 모델(qwen3.5 등)의 추론 내용을 함께 표시합니다. 끄면 최종 답변만 출력합니다.
+            {" "}— thinking 모델(qwen3.5 등)의 추론 과정을 함께 표시합니다. 끄면 최종 답변만 출력합니다.
           </span>
         </span>
       </label>
@@ -363,35 +354,29 @@ function AiTab({
         />
       </Field>
 
-      <Field label="문서 폴더" hint="로컬/네트워크 경로 모두 가능. 하위 폴더까지 검색. 저장 전에도 동기화 가능">
-        <div className="ollama-url-row">
-          <input
-            value={settings.rag_shared_folder}
-            onChange={(e) => onChange("rag_shared_folder", e.target.value)}
-            placeholder="D:\docs\rag-knowledge"
-            disabled={!settings.rag_enabled}
-          />
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => void handlePickFolder()}
-            disabled={!settings.rag_enabled}
-          >
-            찾아보기
-          </button>
-        </div>
+      <Field label="문서 폴더" hint="서버 실행 폴더 내 RAG (변경 불가). 10분마다 변경된 파일만 자동 동기화">
+        <input
+          value={settings.rag_shared_folder || "./RAG"}
+          readOnly
+          disabled
+          className="input-readonly"
+        />
         <button
           type="button"
           className="btn-secondary rag-sync-btn"
           onClick={() => void handleSyncFolder()}
-          disabled={ragSyncing || !settings.rag_enabled || !settings.rag_shared_folder.trim()}
+          disabled={ragSyncing || !settings.rag_enabled}
         >
-          {ragSyncing ? "동기화 중..." : "문서 동기화"}
+          {ragSyncing ? "동기화 중..." : "지금 동기화"}
         </button>
       </Field>
 
       <p className="settings-desc">
         지원 형식: <code>.txt</code>, <code>.md</code>, <code>.markdown</code>, <code>.memo</code>
+        <br />
+        서버 실행 폴더의 <code>RAG</code> 를 10분마다 확인해 변경·추가된 문서만 자동 동기화합니다.
+        <br />
+        AI 업로드 → <code>RAG/ai-uploads</code>, 채널 대화 → <code>RAG/conversations</code> 에 자동 기록됩니다.
         {ragStats && (
           <>
             <br />

@@ -1,8 +1,19 @@
 import { useMemo, useState } from "react";
 import type { PublicUser, Room } from "@intra-chat/shared";
+import { PRESENCE_STATUS_LABELS } from "@intra-chat/shared";
 import { createDm, leaveRoom } from "../api";
+import { sortUsers } from "../utils/sortUsers";
 import { NewRoomModal } from "./NewRoomModal";
 import { AdminSettingsModal } from "./AdminSettingsModal";
+import { ProfileModal } from "./ProfileModal";
+import { UserAvatar } from "./UserAvatar";
+
+const SHOW_OFFLINE_KEY = "intra-chat-show-offline-members";
+
+function readShowOffline(): boolean {
+  const raw = localStorage.getItem(SHOW_OFFLINE_KEY);
+  return raw !== "false";
+}
 
 interface Props {
   rooms: Room[];
@@ -14,6 +25,17 @@ interface Props {
   onRoomsChanged: () => Promise<Room[]>;
   onLogout: () => void;
   onSettingsSaved?: () => void | Promise<void>;
+  onUserUpdated: (user: PublicUser) => void;
+}
+
+function userStatusLabel(user: PublicUser): string {
+  if (!user.isOnline) return "오프라인";
+  return PRESENCE_STATUS_LABELS[user.presenceStatus];
+}
+
+function presenceDotClass(user: PublicUser): string {
+  if (!user.isOnline) return "presence-dot offline";
+  return `presence-dot online ${user.presenceStatus}`;
 }
 
 export function Sidebar({
@@ -26,10 +48,23 @@ export function Sidebar({
   onRoomsChanged,
   onLogout,
   onSettingsSaved,
+  onUserUpdated,
 }: Props): JSX.Element {
   const [modalType, setModalType] = useState<"channel" | "group" | null>(null);
   const [showDmPicker, setShowDmPicker] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const [showOfflineMembers, setShowOfflineMembers] = useState(readShowOffline);
+
+  const sortedUsers = useMemo(() => sortUsers(users), [users]);
+  const visibleUsers = useMemo(() => {
+    if (showOfflineMembers) return sortedUsers;
+    return sortedUsers.filter((u) => u.isOnline || u.id === currentUser.id);
+  }, [sortedUsers, showOfflineMembers, currentUser.id]);
+  const otherUsers = useMemo(
+    () => sortedUsers.filter((u) => u.id !== currentUser.id),
+    [sortedUsers, currentUser.id]
+  );
 
   const channels = useMemo(() => rooms.filter((r) => r.type === "channel"), [rooms]);
   const groups = useMemo(() => rooms.filter((r) => r.type === "group"), [rooms]);
@@ -37,11 +72,18 @@ export function Sidebar({
   const aiRooms = useMemo(() => rooms.filter((r) => r.type === "ai"), [rooms]);
 
   function dmDisplayName(room: Room): string {
-    // DM 방 이름 "dm:a:b" 에서 상대방 id 를 찾아 표시이름으로 변환
     const ids = room.name.replace("dm:", "").split(":").map(Number);
     const otherId = ids.find((id) => id !== currentUser.id);
     const other = users.find((u) => u.id === otherId);
     return other?.displayName ?? "알 수 없는 사용자";
+  }
+
+  function toggleShowOffline(): void {
+    setShowOfflineMembers((prev) => {
+      const next = !prev;
+      localStorage.setItem(SHOW_OFFLINE_KEY, String(next));
+      return next;
+    });
   }
 
   async function handleStartDm(userId: number): Promise<void> {
@@ -79,6 +121,23 @@ export function Sidebar({
     );
   }
 
+  function renderUserRow(user: PublicUser, onClick?: () => void): JSX.Element {
+    return (
+      <li key={user.id} className="user-list-item">
+        <button type="button" className="user-list-btn" onClick={onClick}>
+          <UserAvatar user={user} size={28} />
+          <span className="user-list-meta">
+            <span className="user-list-name">{user.displayName}</span>
+            <span className="user-list-status">
+              <span className={presenceDotClass(user)} />
+              {userStatusLabel(user)}
+            </span>
+          </span>
+        </button>
+      </li>
+    );
+  }
+
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
@@ -89,6 +148,30 @@ export function Sidebar({
       </div>
 
       <div className="sidebar-scroll">
+        <div className="section">
+          <div className="section-header">
+            <span>멤버 ({visibleUsers.length})</span>
+            <button
+              type="button"
+              className={`section-toggle ${showOfflineMembers ? "on" : "off"}`}
+              title={showOfflineMembers ? "오프라인 사용자 숨기기" : "오프라인 사용자 표시"}
+              onClick={toggleShowOffline}
+            >
+              {showOfflineMembers ? "오프라인 ON" : "오프라인 OFF"}
+            </button>
+          </div>
+          <ul className="user-list">
+            {visibleUsers.map((u) =>
+              renderUserRow(
+                u,
+                u.id === currentUser.id
+                  ? () => setShowProfile(true)
+                  : () => void handleStartDm(u.id)
+              )
+            )}
+          </ul>
+        </div>
+
         <Section title="AI" items={aiRooms.map((r) => renderRoomItem(r, r.name, "🤖 "))} />
         <Section
           title="채널"
@@ -108,28 +191,40 @@ export function Sidebar({
 
         {showDmPicker && (
           <ul className="dm-picker">
-            {users
-              .filter((u) => u.id !== currentUser.id)
-              .map((u) => (
-                <li key={u.id}>
-                  <button className="dm-picker-item" onClick={() => handleStartDm(u.id)}>
-                    <span className={`presence-dot ${u.isOnline ? "online" : ""}`} />
-                    {u.displayName}
-                  </button>
-                </li>
-              ))}
+            {otherUsers.map((u) => (
+              <li key={u.id}>
+                <button className="dm-picker-item" onClick={() => void handleStartDm(u.id)}>
+                  <UserAvatar user={u} size={24} />
+                  <span className="user-list-meta">
+                    <span>{u.displayName}</span>
+                    <span className="user-list-status">
+                      <span className={presenceDotClass(u)} />
+                      {userStatusLabel(u)}
+                    </span>
+                  </span>
+                </button>
+              </li>
+            ))}
           </ul>
         )}
       </div>
 
       <div className="sidebar-footer">
-        <div className="me">
-          <span className="presence-dot online" />
-          <span className="me-name">{currentUser.displayName}</span>
+        <button type="button" className="me profile-trigger" onClick={() => setShowProfile(true)}>
+          <UserAvatar user={currentUser} size={28} />
+          <span className="me-meta">
+            <span className="me-name">{currentUser.displayName}</span>
+            <span className="me-status">
+              <span className={presenceDotClass(currentUser)} />
+              {userStatusLabel(currentUser)}
+            </span>
+          </span>
           {currentUser.isAdmin && (
-            <span className="admin-badge" title="관리자">⚙</span>
+            <span className="admin-badge" title="관리자">
+              ⚙
+            </span>
           )}
-        </div>
+        </button>
         <div className="footer-actions">
           {currentUser.isAdmin && (
             <button className="btn-settings" title="연동 설정" onClick={() => setShowSettings(true)}>
@@ -142,8 +237,17 @@ export function Sidebar({
         </div>
       </div>
 
+      {showProfile && (
+        <ProfileModal
+          user={currentUser}
+          onClose={() => setShowProfile(false)}
+          onUpdated={onUserUpdated}
+        />
+      )}
+
       {showSettings && (
         <AdminSettingsModal
+          currentUserId={currentUser.id}
           onClose={() => setShowSettings(false)}
           onSaved={async () => {
             await onSettingsSaved?.();
@@ -154,7 +258,7 @@ export function Sidebar({
       {modalType && (
         <NewRoomModal
           type={modalType}
-          users={users.filter((u) => u.id !== currentUser.id)}
+          users={otherUsers}
           onClose={() => setModalType(null)}
           onCreated={async (room) => {
             await onRoomsChanged();

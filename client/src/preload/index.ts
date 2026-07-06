@@ -11,6 +11,19 @@ const api = {
   /** RAG 문서 폴더 경로 선택 (탐색기) */
   pickFolder: (defaultPath?: string): Promise<string | null> =>
     ipcRenderer.invoke("folder:pick", defaultPath),
+  /** 새 메시지 OS 알림 */
+  showNotification: (payload: { title: string; body: string; roomId: number }): Promise<void> =>
+    ipcRenderer.invoke("notification:show", payload),
+  /** 알림 클릭 시 방 이동 */
+  onNotificationNavigate: (callback: (roomId: number) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, roomId: number): void => {
+      callback(roomId);
+    };
+    ipcRenderer.on("notification:navigate", listener);
+    return () => {
+      ipcRenderer.removeListener("notification:navigate", listener);
+    };
+  },
 };
 
 contextBridge.exposeInMainWorld("intraChat", api);

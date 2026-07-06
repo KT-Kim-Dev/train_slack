@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, Notification, shell } from "electron";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -67,6 +67,27 @@ ipcMain.handle("folder:pick", async (_event, defaultPath?: string): Promise<stri
   if (canceled || filePaths.length === 0) return null;
   return filePaths[0] ?? null;
 });
+
+/** 새 메시지 OS 알림 (윈도우 비활성 시) */
+ipcMain.handle(
+  "notification:show",
+  (event, payload: { title: string; body: string; roomId: number }): void => {
+    if (!Notification.isSupported()) return;
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win?.isFocused()) return;
+
+    const notification = new Notification({
+      title: payload.title,
+      body: payload.body,
+    });
+    notification.on("click", () => {
+      win?.show();
+      win?.focus();
+      win?.webContents.send("notification:navigate", payload.roomId);
+    });
+    notification.show();
+  }
+);
 
 app.whenReady().then(() => {
   // Windows/macOS 기본 애플리케이션 메뉴(File, Edit, View 등) 제거

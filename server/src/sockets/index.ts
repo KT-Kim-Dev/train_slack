@@ -3,23 +3,25 @@ import { Server, type Socket } from "socket.io";
 import type {
   ClientToServerEvents,
   Message,
+  PublicUser,
   Room,
   ServerToClientEvents,
 } from "@intra-chat/shared";
 import { verifyToken } from "../auth/jwt.js";
-import { getUserById, setOnline } from "../db/users.js";
+import { getUserById, setOnline, toPublicUser } from "../db/users.js";
 import {
   getContextMessages,
   insertAiPlaceholder,
   insertTextMessage,
   setMessageContent,
 } from "../db/messages.js";
-import { getRoomIdsForUser, isMember, markRoomRead } from "../db/rooms.js";
+import { getRoomById, getRoomIdsForUser, getUnreadCountForUser, isMember, markRoomRead, toRoom, unhideDmRecipients } from "../db/rooms.js";
 import { getSettings } from "../db/settings.js";
 import { logCommand } from "../db/integrations.js";
 import { appendRagContext, buildAiSystemPrompt } from "../services/ai-prompt.js";
 import { chatStream, IntegrationError } from "../services/ollama.js";
 import { indexQaPair, retrieveRagContext } from "../services/rag.js";
+import { scheduleRoomConversationExport } from "../services/rag-export.js";
 import { logger } from "../logger.js";
 
 interface SocketData {
@@ -46,7 +48,36 @@ export function getIo(): IOServer {
 
 /** 특정 방의 모든 참여자에게 새 메시지를 브로드캐스트 (FR-11) */
 export function broadcastMessage(message: Message): void {
+  const room = getRoomById(message.roomId);
+  if (room?.type === "dm") {
+    const unhiddenIds = unhideDmRecipients(message.roomId, message.senderId);
+    if (unhiddenIds.length > 0) {
+      notifyRoomUnhidden(room, unhiddenIds);
+    }
+  }
   getIo().to(roomChannel(message.roomId)).emit("message:new", message);
+}
+
+/** 프로필/상태 변경 또는 신규 사용자 추가 시 멤버 목록 갱신 */
+export function broadcastUserUpdated(user: PublicUser): void {
+  getIo().emit("user:updated", user);
+}
+
+/** 계정 삭제/비활성화 시 멤버 목록에서 제거 */
+export function broadcastUserRemoved(userId: number): void {
+  getIo().emit("user:removed", { userId });
+}
+
+function emitPresenceUpdate(userId: number): void {
+  const user = getUserById(userId);
+  if (!user) return;
+  const publicUser = toPublicUser(user);
+  getIo().emit("presence:update", {
+    userId,
+    isOnline: publicUser.isOnline,
+    lastSeen: publicUser.lastSeen,
+    presenceStatus: publicUser.presenceStatus,
+  });
 }
 
 /** 방 생성/초대 시 대상 사용자들에게 알림 (사이드바 갱신용) */
@@ -54,9 +85,22 @@ export function notifyRoomCreated(room: Room, memberIds: number[]): void {
   const server = getIo();
   for (const [socketId, sock] of server.sockets.sockets) {
     if (memberIds.includes(sock.data.userId)) {
-      // 즉시 해당 소켓을 방 채널에 합류시켜 실시간 수신이 가능하도록 함
       sock.join(roomChannel(room.id));
       server.to(socketId).emit("room:created", room);
+    }
+  }
+}
+
+/** 숨긴 DM 이 새 메시지로 다시 나타날 때 대상 사용자에게 알림 */
+export function notifyRoomUnhidden(roomRow: ReturnType<typeof getRoomById>, userIds: number[]): void {
+  if (!roomRow) return;
+  const server = getIo();
+  for (const [socketId, sock] of server.sockets.sockets) {
+    if (userIds.includes(sock.data.userId)) {
+      const unread = getUnreadCountForUser(roomRow.id, sock.data.userId);
+      const room = toRoom(roomRow, unread);
+      sock.join(roomChannel(room.id));
+      server.to(socketId).emit("room:unhidden", room);
     }
   }
 }
@@ -118,6 +162,7 @@ export function initSocket(httpServer: HttpServer, corsOrigin: string[]): IOServ
       const message = insertTextMessage({ roomId, senderId: userId, content: trimmed });
       markRoomRead(roomId, userId, message.id);
       broadcastMessage(message);
+      scheduleRoomConversationExport(roomId);
       logger.info("메시지 전송", { roomId, userId, messageId: message.id });
       ack?.({ ok: true, message });
     });
@@ -155,7 +200,7 @@ function handleConnect(socket: AppSocket, userId: number, username: string): voi
 
   if (wasOffline) {
     setOnline(userId, true);
-    getIo().emit("presence:update", { userId, isOnline: true, lastSeen: null });
+    emitPresenceUpdate(userId);
     logger.info("온라인 전환", { userId, username });
   }
 }
@@ -166,8 +211,8 @@ function handleDisconnect(socket: AppSocket, userId: number, username: string): 
   set.delete(socket.id);
   if (set.size === 0) {
     onlineSockets.delete(userId);
-    const lastSeen = setOnline(userId, false);
-    getIo().emit("presence:update", { userId, isOnline: false, lastSeen });
+    setOnline(userId, false);
+    emitPresenceUpdate(userId);
     logger.info("오프라인 전환", { userId, username });
   }
 }
@@ -190,6 +235,7 @@ async function handleAiAsk(
   const question = insertTextMessage({ roomId, senderId: userId, content });
   markRoomRead(roomId, userId, question.id);
   broadcastMessage(question);
+  scheduleRoomConversationExport(roomId);
 
   // 2) AI 응답 자리표시자 — 발신자를 질문한 사용자로 표시 (message_type으로 AI 여부 구분)
   const placeholder = insertAiPlaceholder({ roomId, senderId: userId });
@@ -200,15 +246,8 @@ async function handleAiAsk(
   const history = getContextMessages(roomId, aiSettings.ai_context_limit);
   let systemPrompt = buildAiSystemPrompt(aiSettings);
   if (aiSettings.rag_enabled) {
-    try {
-      const ragContext = await retrieveRagContext(content);
-      systemPrompt = appendRagContext(systemPrompt, ragContext);
-    } catch (err) {
-      logger.warn("RAG 검색 실패", {
-        roomId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
+    const ragContext = await retrieveRagContext(content);
+    systemPrompt = appendRagContext(systemPrompt, ragContext);
   }
   const messages = [{ role: "system" as const, content: systemPrompt }, ...history];
 
@@ -238,13 +277,9 @@ async function handleAiAsk(
     });
     logCommand({ userId, command: "/ai", parameter: content.slice(0, 200), success: true, elapsedMs });
     if (aiSettings.rag_enabled && aiSettings.rag_auto_learn) {
-      void indexQaPair(content, accumulated).catch((err) => {
-        logger.warn("RAG Q&A 학습 실패", {
-          roomId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      });
+      void indexQaPair(content, accumulated);
     }
+    scheduleRoomConversationExport(roomId);
   } catch (err) {
     const errorMsg =
       err instanceof IntegrationError ? err.message : "AI 응답 처리 중 오류가 발생했습니다.";
@@ -264,6 +299,7 @@ async function handleAiAsk(
       elapsedMs: Date.now() - startedAt,
     });
     logger.warn("AI 응답 실패", { roomId, userId, error: errorMsg });
+    scheduleRoomConversationExport(roomId);
   }
 }
 

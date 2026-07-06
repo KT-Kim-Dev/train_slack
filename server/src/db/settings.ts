@@ -6,6 +6,7 @@
  */
 
 import { db } from "./index.js";
+import { config } from "../config.js";
 
 export interface IntegrationSettings {
   ollama_url: string;
@@ -112,7 +113,7 @@ export function getSettings(): IntegrationSettings {
       map.rag_auto_learn !== undefined ? parseBool(map.rag_auto_learn, DEFAULTS.rag_auto_learn) : env.rag_auto_learn,
     rag_embedding_model: map.rag_embedding_model || env.rag_embedding_model,
     rag_top_k: map.rag_top_k ? Number(map.rag_top_k) : env.rag_top_k,
-    rag_shared_folder: map.rag_shared_folder ?? env.rag_shared_folder,
+    rag_shared_folder: config.ragDocumentFolder,
     rag_last_sync_at: map.rag_last_sync_at ?? env.rag_last_sync_at,
     yona_url: map.yona_url ?? env.yona_url,
     yona_token: map.yona_token ?? env.yona_token,
@@ -139,4 +140,20 @@ export function updateSettings(partial: Partial<IntegrationSettings>): void {
     .map(([k, v]) => [k, String(v)] as [string, string]);
 
   run(entries);
+}
+
+/** RAG 파일 스냅샷 등 임의 설정 키 조회 */
+export function getRawSetting(key: string): string | null {
+  const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as
+    | { value: string }
+    | undefined;
+  return row?.value ?? null;
+}
+
+/** RAG 파일 스냅샷 등 임의 설정 키 저장 */
+export function setRawSetting(key: string, value: string): void {
+  db.prepare(
+    "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now')) " +
+      "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
+  ).run(key, value);
 }

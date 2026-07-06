@@ -105,6 +105,40 @@ export function hideRoom(roomId: number, userId: number, hidden: boolean): void 
   ).run(hidden ? 1 : 0, roomId, userId);
 }
 
+/** DM 수신 시 숨김 처리된 상대방에게 방을 다시 표시한다 */
+export function unhideDmRecipients(roomId: number, senderId: number): number[] {
+  const rows = db
+    .prepare(
+      `SELECT user_id FROM room_members
+       WHERE room_id = ? AND is_hidden = 1 AND user_id != ?`
+    )
+    .all(roomId, senderId) as { user_id: number }[];
+  if (rows.length === 0) return [];
+  db.prepare(
+    `UPDATE room_members SET is_hidden = 0
+     WHERE room_id = ? AND is_hidden = 1 AND user_id != ?`
+  ).run(roomId, senderId);
+  return rows.map((r) => r.user_id);
+}
+
+/** 특정 사용자의 방 미읽음 수 (목록 복원용) */
+export function getUnreadCountForUser(roomId: number, userId: number): number {
+  const row = db
+    .prepare(
+      `SELECT last_read_message_id AS last_read FROM room_members
+       WHERE room_id = ? AND user_id = ?`
+    )
+    .get(roomId, userId) as { last_read: number | null } | undefined;
+  if (!row) return 0;
+  const unread = db
+    .prepare(
+      `SELECT COUNT(*) AS cnt FROM messages
+       WHERE room_id = ? AND id > COALESCE(?, 0) AND sender_id <> ?`
+    )
+    .get(roomId, row.last_read, userId) as { cnt: number };
+  return unread.cnt;
+}
+
 /** 두 사용자 간 기존 DM 방을 찾는다 (참여자가 정확히 두 명이고 둘 다 포함) */
 export function findDmRoom(userA: number, userB: number): RoomRow | undefined {
   return db

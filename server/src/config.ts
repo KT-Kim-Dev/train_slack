@@ -22,6 +22,9 @@ export const config = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? "7d",
   dbPath: resolveFromRoot(process.env.DB_PATH ?? "./data/intra-chat.sqlite"),
   uploadDir: ensureDir(resolveFromRoot(process.env.UPLOAD_DIR ?? "./uploads")),
+  avatarsDir: ensureDir(
+    resolveFromRoot(path.join(process.env.UPLOAD_DIR ?? "./uploads", "avatars"))
+  ),
   logDir: ensureDir(resolveFromRoot("./logs")),
   maxFileSize: Number(process.env.MAX_FILE_SIZE ?? 100 * 1024 * 1024),
   corsOrigin: (process.env.CORS_ORIGIN ?? "http://localhost:5173")
@@ -32,6 +35,9 @@ export const config = {
     .split(",")
     .map((u) => u.trim())
     .filter(Boolean),
+
+  /** RAG 문서 폴더 — 서버 실행 디렉터리 기준 ./RAG (시작 시 자동 생성) */
+  ragDocumentFolder: ensureDir(resolveFromRoot(process.env.RAG_DIR ?? "./RAG")),
 
   // ------ v3: 업무 연동 설정 (모두 인트라넷 내부 주소, 없으면 해당 기능 비활성화) ------
   ai: {

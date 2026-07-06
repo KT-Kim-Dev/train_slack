@@ -12,6 +12,7 @@ let socket: AppSocket | null = null;
 
 /** 토큰으로 인증된 Socket 연결을 생성한다 (자동 재연결 활성화, 비기능 요구사항: 가용성) */
 export function connectSocket(token: string): AppSocket {
+  if (socket?.connected) return socket;
   if (socket) socket.disconnect();
   socket = io(SERVER_URL, {
     auth: { token },

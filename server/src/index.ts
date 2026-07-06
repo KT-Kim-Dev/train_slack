@@ -13,6 +13,7 @@ import { adminRouter } from "./routes/admin.js";
 import { yonaRouter } from "./routes/yona.js";
 import { jenkinsRouter } from "./routes/jenkins.js";
 import { integrationsRouter } from "./routes/integrations.js";
+import { startRagScheduler } from "./services/rag-scheduler.js";
 
 initDb();
 
@@ -49,4 +50,5 @@ initSocket(httpServer, config.corsOrigin);
 
 httpServer.listen(config.port, () => {
   logger.info(`Intra-Chat 서버 실행 중`, { port: config.port });
+  startRagScheduler();
 });

@@ -91,6 +91,26 @@ export function deleteDocumentChunksExcept(sourceKeys: Set<string>): number {
   return removed;
 }
 
+/** 특정 문서 파일에 속한 모든 조각을 삭제한다 (source_key = "path#0", "path#1", …) */
+export function deleteDocumentChunksForFile(relativePath: string): number {
+  const result = db
+    .prepare(
+      `DELETE FROM knowledge_chunks WHERE source_type = 'document' AND source_key LIKE ?`
+    )
+    .run(`${relativePath}#%`);
+  return result.changes;
+}
+
+/** 변경 없는 파일의 기존 조각 키 목록 (증분 동기화용) */
+export function listDocumentChunkKeysForFile(relativePath: string): string[] {
+  const rows = db
+    .prepare(
+      `SELECT source_key FROM knowledge_chunks WHERE source_type = 'document' AND source_key LIKE ?`
+    )
+    .all(`${relativePath}#%`) as { source_key: string }[];
+  return rows.map((row) => row.source_key);
+}
+
 export function getKnowledgeStats(): KnowledgeStats {
   const total = db.prepare(`SELECT COUNT(*) AS c FROM knowledge_chunks`).get() as { c: number };
   const qa = db

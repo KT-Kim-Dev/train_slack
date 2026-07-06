@@ -23,6 +23,8 @@ CREATE TABLE IF NOT EXISTS users (
   is_online     INTEGER NOT NULL DEFAULT 0,
   is_active     INTEGER NOT NULL DEFAULT 1,
   last_seen     TEXT,
+  profile_image_path TEXT,
+  presence_status TEXT NOT NULL DEFAULT 'available',
   created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
@@ -192,6 +194,18 @@ function runMigrations(): void {
       COMMIT;
       PRAGMA foreign_keys = ON;
     `);
+  }
+
+  // ----- users: 프로필 이미지 + 온라인 상태(대화가능/바쁨/자리비움) -----
+  const userCols = db.prepare("PRAGMA table_info(users)").all() as { name: string }[];
+  const colNames = new Set(userCols.map((c) => c.name));
+  if (!colNames.has("presence_status")) {
+    logger.info("DB 마이그레이션: users.presence_status 추가");
+    db.exec("ALTER TABLE users ADD COLUMN presence_status TEXT NOT NULL DEFAULT 'available'");
+  }
+  if (!colNames.has("profile_image_path")) {
+    logger.info("DB 마이그레이션: users.profile_image_path 추가");
+    db.exec("ALTER TABLE users ADD COLUMN profile_image_path TEXT");
   }
 }
 
