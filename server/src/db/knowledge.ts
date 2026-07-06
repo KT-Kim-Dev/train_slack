@@ -1,3 +1,4 @@
+import type { Statement } from "better-sqlite3";
 import { db } from "./index.js";
 
 export type KnowledgeSourceType = "qa" | "document";
@@ -17,15 +18,22 @@ export interface KnowledgeStats {
   documentChunks: number;
 }
 
-const upsertStmt = db.prepare(`
-  INSERT INTO knowledge_chunks (source_type, source_key, title, content, embedding, updated_at)
-  VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-  ON CONFLICT(source_type, source_key) DO UPDATE SET
-    title = excluded.title,
-    content = excluded.content,
-    embedding = excluded.embedding,
-    updated_at = excluded.updated_at
-`);
+// DB 초기화 이후 첫 호출 시 준비 (모듈 로드 시점에 테이블이 없을 수 있으므로 lazy)
+let _upsertStmt: Statement | null = null;
+function getUpsertStmt(): Statement {
+  if (!_upsertStmt) {
+    _upsertStmt = db.prepare(`
+      INSERT INTO knowledge_chunks (source_type, source_key, title, content, embedding, updated_at)
+      VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      ON CONFLICT(source_type, source_key) DO UPDATE SET
+        title = excluded.title,
+        content = excluded.content,
+        embedding = excluded.embedding,
+        updated_at = excluded.updated_at
+    `);
+  }
+  return _upsertStmt;
+}
 
 export function upsertKnowledgeChunk(params: {
   sourceType: KnowledgeSourceType;
@@ -34,7 +42,7 @@ export function upsertKnowledgeChunk(params: {
   content: string;
   embedding: number[];
 }): void {
-  upsertStmt.run(
+  getUpsertStmt().run(
     params.sourceType,
     params.sourceKey,
     params.title,
