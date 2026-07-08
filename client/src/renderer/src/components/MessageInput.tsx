@@ -1,6 +1,8 @@
-import { useRef, useState, type DragEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
 import { uploadFiles } from "../api";
 import { COMMAND_HINTS } from "../commands";
+
+const TEXTAREA_MAX_HEIGHT = 320;
 
 interface Props {
   roomId: number;
@@ -15,6 +17,14 @@ export function MessageInput({ roomId, isAiRoom, onSubmit }: Props): JSX.Element
   const [uploadPercent, setUploadPercent] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, TEXTAREA_MAX_HEIGHT)}px`;
+  }, [text]);
 
   async function submitText(): Promise<void> {
     const trimmed = text.trim();
@@ -95,16 +105,17 @@ export function MessageInput({ roomId, isAiRoom, onSubmit }: Props): JSX.Element
           onChange={(e) => e.target.files && void handleFiles(e.target.files)}
         />
         <textarea
-          className="text-area"
+          ref={textareaRef}
+          className="text-area code-friendly"
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={
             isAiRoom
               ? "AI에게 질문하세요 (Enter: 전송, Shift+Enter: 줄바꿈)"
-              : "메시지 또는 명령어 입력 (Enter: 전송, Shift+Enter: 줄바꿈)"
+              : "메시지 또는 소스 코드 입력 (Enter: 전송, Shift+Enter: 줄바꿈)"
           }
-          rows={1}
+          rows={3}
         />
         <button className="send-btn" onClick={submitText} disabled={sending || !text.trim()}>
           전송

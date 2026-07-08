@@ -80,8 +80,10 @@ filesRouter.post(
     upload.array("files")(req, res, (err: unknown) => {
       if (err) {
         if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
-          const mb = Math.round(config.maxFileSize / (1024 * 1024));
-          res.status(413).json({ error: `파일 크기가 제한(${mb}MB)을 초과했습니다.` });
+          const limitGb = config.maxFileSize / (1024 * 1024 * 1024);
+          const limitLabel =
+            limitGb >= 1 ? `${Math.round(limitGb)}GB` : `${Math.round(config.maxFileSize / (1024 * 1024))}MB`;
+          res.status(413).json({ error: `파일 크기가 제한(${limitLabel})을 초과했습니다.` });
           return;
         }
         next(err);

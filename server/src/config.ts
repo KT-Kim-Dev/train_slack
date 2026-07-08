@@ -26,7 +26,7 @@ export const config = {
     resolveFromRoot(path.join(process.env.UPLOAD_DIR ?? "./uploads", "avatars"))
   ),
   logDir: ensureDir(resolveFromRoot("./logs")),
-  maxFileSize: Number(process.env.MAX_FILE_SIZE ?? 100 * 1024 * 1024),
+  maxFileSize: Number(process.env.MAX_FILE_SIZE ?? 1024 * 1024 * 1024),
   corsOrigin: (process.env.CORS_ORIGIN ?? "http://localhost:5173")
     .split(",")
     .map((o) => o.trim())

@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { BuildCard, IssueCard, Message } from "@intra-chat/shared";
 import { fileUrl } from "../api";
+import { MessageContent } from "./MessageContent";
 
 interface Props {
   message: Message;
@@ -58,15 +59,13 @@ export function MessageItem({ message, isMine, isAiStreaming = false, onImageCli
           <span className="message-time">{formatTime(message.createdAt)}</span>
         </div>
 
-        {message.messageType === "text" && (
-          <div className="message-text">{message.content}</div>
-        )}
+        {message.messageType === "text" && <MessageContent content={message.content ?? ""} />}
 
         {isAi && (
           <div className="message-text ai-text">
             {message.content ? (
               <>
-                {message.content}
+                <MessageContent content={message.content} className="ai-content" />
                 {isAiStreaming && (
                   <span className="ai-stream-cursor" aria-label="응답 생성 중">
                     ▍
