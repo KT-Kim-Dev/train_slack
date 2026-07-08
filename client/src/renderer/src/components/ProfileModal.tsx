@@ -2,9 +2,11 @@ import { useRef, useState } from "react";
 import type { PublicUser, UserPresenceStatus } from "@intra-chat/shared";
 import { PRESENCE_STATUS_LABELS } from "@intra-chat/shared";
 import { updateMyStatus, uploadAvatar } from "../api";
+import { AvatarCropModal } from "./AvatarCropModal";
 import { UserAvatar } from "./UserAvatar";
 
 const STATUS_OPTIONS: UserPresenceStatus[] = ["available", "busy", "away"];
+const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 
 interface Props {
   user: PublicUser;
@@ -17,6 +19,7 @@ export function ProfileModal({ user, onClose, onUpdated }: Props): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [avatarBust, setAvatarBust] = useState(() => Date.now());
+  const [cropSource, setCropSource] = useState<{ url: string; fileName: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function handleStatusChange(status: UserPresenceStatus): Promise<void> {
@@ -34,8 +37,31 @@ export function ProfileModal({ user, onClose, onUpdated }: Props): JSX.Element {
     }
   }
 
-  async function handleAvatarSelected(file: File | undefined): Promise<void> {
+  function handleAvatarSelected(file: File | undefined): void {
     if (!file || busy) return;
+    setError(null);
+
+    if (!/^image\/(jpeg|png|gif|webp)$/i.test(file.type)) {
+      setError("JPEG, PNG, GIF, WebP 이미지만 업로드할 수 있습니다.");
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
+    if (file.size > MAX_AVATAR_BYTES) {
+      setError("프로필 이미지는 5MB 이하여야 합니다.");
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
+
+    setCropSource({ url: URL.createObjectURL(file), fileName: file.name });
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  function closeCrop(): void {
+    if (cropSource) URL.revokeObjectURL(cropSource.url);
+    setCropSource(null);
+  }
+
+  async function handleCroppedUpload(file: File): Promise<void> {
     setBusy(true);
     setError(null);
     try {
@@ -45,66 +71,78 @@ export function ProfileModal({ user, onClose, onUpdated }: Props): JSX.Element {
       onUpdated(updated);
     } catch (err) {
       setError(err instanceof Error ? err.message : "이미지 업로드에 실패했습니다.");
+      throw err;
     } finally {
       setBusy(false);
-      if (fileRef.current) fileRef.current.value = "";
     }
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal profile-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2>내 프로필</h2>
-          <button className="modal-close" onClick={onClose}>
-            ×
-          </button>
-        </div>
-
-        <div className="profile-avatar-row">
-          <UserAvatar user={current} size={72} cacheBust={avatarBust} />
-          <div>
-            <div className="profile-name">{current.displayName}</div>
-            <div className="profile-username">@{current.username}</div>
-            <button
-              className="btn-secondary"
-              disabled={busy}
-              onClick={() => fileRef.current?.click()}
-            >
-              프로필 사진 변경
+    <>
+      <div className="modal-backdrop" onClick={onClose}>
+        <div className="modal profile-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-header">
+            <h2>내 프로필</h2>
+            <button className="modal-close" onClick={onClose}>
+              ×
             </button>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/jpeg,image/png,image/gif,image/webp"
-              hidden
-              onChange={(e) => void handleAvatarSelected(e.target.files?.[0])}
-            />
           </div>
-        </div>
 
-        <div className="profile-section">
-          <div className="profile-section-title">내 상태</div>
-          <div className="status-options">
-            {STATUS_OPTIONS.map((status) => (
+          <div className="profile-avatar-row">
+            <UserAvatar user={current} size={72} cacheBust={avatarBust} />
+            <div>
+              <div className="profile-name">{current.displayName}</div>
+              <div className="profile-username">@{current.username}</div>
               <button
-                key={status}
-                type="button"
-                className={`status-option status-${status} ${
-                  current.presenceStatus === status ? "active" : ""
-                }`}
+                className="btn-secondary"
                 disabled={busy}
-                onClick={() => void handleStatusChange(status)}
+                onClick={() => fileRef.current?.click()}
               >
-                <span className={`presence-dot ${status}`} />
-                {PRESENCE_STATUS_LABELS[status]}
+                프로필 사진 변경
               </button>
-            ))}
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/jpeg,image/png,image/gif,image/webp"
+                hidden
+                onChange={(e) => handleAvatarSelected(e.target.files?.[0])}
+              />
+              <p className="profile-upload-hint">최대 5MB · 업로드 후 영역을 지정할 수 있습니다</p>
+            </div>
           </div>
-        </div>
 
-        {error && <div className="form-error">{error}</div>}
+          <div className="profile-section">
+            <div className="profile-section-title">내 상태</div>
+            <div className="status-options">
+              {STATUS_OPTIONS.map((status) => (
+                <button
+                  key={status}
+                  type="button"
+                  className={`status-option status-${status} ${
+                    current.presenceStatus === status ? "active" : ""
+                  }`}
+                  disabled={busy}
+                  onClick={() => void handleStatusChange(status)}
+                >
+                  <span className={`presence-dot ${status}`} />
+                  {PRESENCE_STATUS_LABELS[status]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {error && <div className="form-error">{error}</div>}
+        </div>
       </div>
-    </div>
+
+      {cropSource && (
+        <AvatarCropModal
+          imageUrl={cropSource.url}
+          fileName={cropSource.fileName}
+          onClose={closeCrop}
+          onConfirm={handleCroppedUpload}
+        />
+      )}
+    </>
   );
 }

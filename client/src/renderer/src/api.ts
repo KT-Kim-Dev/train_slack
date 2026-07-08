@@ -109,10 +109,21 @@ export async function updateMyStatus(status: UserPresenceStatus): Promise<Public
 }
 
 /** 프로필 이미지 URL (쿼리 토큰 + 캐시 무효화) */
-export function avatarUrl(userId: number, cacheBust?: string | number): string {
+export function avatarUrl(
+  userId: number,
+  profileImageUrl?: string | null,
+  cacheBust?: string | number
+): string {
   const token = getToken();
-  const v = cacheBust != null ? `&v=${encodeURIComponent(String(cacheBust))}` : "";
-  return `${SERVER_URL}/api/users/${userId}/avatar?token=${encodeURIComponent(token ?? "")}${v}`;
+  const base = profileImageUrl?.startsWith("/")
+    ? `${SERVER_URL}${profileImageUrl}`
+    : `${SERVER_URL}/api/users/${userId}/avatar`;
+  const joiner = base.includes("?") ? "&" : "?";
+  let url = `${base}${joiner}token=${encodeURIComponent(token ?? "")}`;
+  if (cacheBust != null) {
+    url += `&_=${encodeURIComponent(String(cacheBust))}`;
+  }
+  return url;
 }
 
 export function uploadAvatar(file: File): Promise<PublicUser> {

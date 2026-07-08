@@ -374,22 +374,30 @@ body {
 }
 .user-avatar {
   flex-shrink: 0;
-  border-radius: 6px;
+  border-radius: 50%;
   overflow: hidden;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   background: rgba(255, 255, 255, 0.12);
+  border: 2px solid rgba(255, 255, 255, 0.15);
 }
 .user-avatar img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center;
   display: block;
+  border-radius: 50%;
 }
 .user-avatar-initial {
   font-weight: 700;
   color: rgba(255, 255, 255, 0.85);
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .profile-trigger {
   background: transparent;
@@ -434,6 +442,66 @@ body {
   color: var(--text-muted);
   font-size: 13px;
   margin-bottom: 10px;
+}
+.profile-upload-hint {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.avatar-crop-backdrop {
+  z-index: 110;
+}
+.avatar-crop-modal {
+  width: min(380px, 92vw);
+}
+.avatar-crop-stage {
+  position: relative;
+  overflow: hidden;
+  margin: 0 auto 14px;
+  cursor: grab;
+  touch-action: none;
+  background: #141414;
+  border-radius: 12px;
+  user-select: none;
+}
+.avatar-crop-stage:active {
+  cursor: grabbing;
+}
+.avatar-crop-image {
+  position: absolute;
+  left: 0;
+  top: 0;
+  user-select: none;
+  pointer-events: none;
+}
+.avatar-crop-mask {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at center,
+    transparent 140px,
+    rgba(0, 0, 0, 0.62) 141px
+  );
+}
+.avatar-crop-ring {
+  position: absolute;
+  inset: 0;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+.avatar-crop-zoom {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.avatar-crop-zoom input[type="range"] {
+  width: 100%;
 }
 .profile-section {
   margin-top: 8px;
@@ -1066,6 +1134,47 @@ body {
 /* ---------- AI / 명령어 / 카드 ---------- */
 .message.ai .message-avatar {
   background: #10a37f;
+}
+.ai-flow-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+}
+.ai-flow-party {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.ai-flow-party.user-party {
+  background: rgba(124, 58, 237, 0.15);
+  color: #c4b5fd;
+}
+.ai-flow-party.ai-party {
+  background: rgba(16, 163, 127, 0.18);
+  color: #6ee7b7;
+}
+.ai-flow-arrow {
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+.message.ai-flow-question .message-avatar {
+  background: #7c3aed;
+}
+.message.ai-flow-answer .message-avatar {
+  background: #10a37f;
+}
+.ai-flow-question-text {
+  background: rgba(124, 58, 237, 0.08);
+  border-left: 3px solid #7c3aed;
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin-top: 2px;
+}
+.message.ai-flow-answer .ai-text {
+  background: rgba(16, 163, 127, 0.1);
 }
 .ai-text {
   background: rgba(16, 163, 127, 0.08);

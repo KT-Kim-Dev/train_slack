@@ -1,12 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import type { BuildCard, IssueCard, Message } from "@intra-chat/shared";
 import { fileUrl } from "../api";
 import { MessageContent } from "./MessageContent";
+import type { AiFlowKind } from "../utils/aiMessageFlow";
 
 interface Props {
   message: Message;
   isMine: boolean;
   isAiStreaming?: boolean;
+  aiFlowKind?: AiFlowKind | null;
   onImageClick: (url: string) => void;
 }
 
@@ -32,7 +34,13 @@ function formatSize(bytes: number | null): string {
   return `${size.toFixed(size >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-export function MessageItem({ message, isMine, isAiStreaming = false, onImageClick }: Props): JSX.Element {
+export function MessageItem({
+  message,
+  isMine,
+  isAiStreaming = false,
+  aiFlowKind = null,
+  onImageClick,
+}: Props): JSX.Element {
   const [downloading, setDownloading] = useState(false);
   const url = message.fileUrl ? fileUrl(message.fileUrl) : null;
 
@@ -49,17 +57,34 @@ export function MessageItem({ message, isMine, isAiStreaming = false, onImageCli
   }
 
   const isAi = message.messageType === "ai_response";
+  const isAiQuestion = aiFlowKind === "question";
+  const isAiAnswer = aiFlowKind === "answer";
+  const askerName = message.senderName ?? "사용자";
+
+  const avatarLabel = isAiAnswer || (isAi && !aiFlowKind) ? "🤖" : message.senderName?.[0] ?? "?";
 
   return (
-    <div className={`message ${isMine ? "mine" : ""} ${isAi ? "ai" : ""}`}>
-      <div className="message-avatar">{isAi ? "🤖" : message.senderName?.[0] ?? "?"}</div>
+    <div
+      className={`message ${isMine ? "mine" : ""} ${isAi ? "ai" : ""} ${isAiQuestion ? "ai-flow-question" : ""} ${isAiAnswer ? "ai-flow-answer" : ""}`}
+    >
+      <div className="message-avatar">{avatarLabel}</div>
       <div className="message-body">
         <div className="message-meta">
-          <span className="message-sender">{message.senderName}</span>
+          {isAiQuestion ? (
+            <AiFlowLabel from={askerName} to="AI" />
+          ) : isAiAnswer ? (
+            <AiFlowLabel from="AI" to={askerName} />
+          ) : (
+            <span className="message-sender">{message.senderName}</span>
+          )}
           <span className="message-time">{formatTime(message.createdAt)}</span>
         </div>
 
-        {message.messageType === "text" && <MessageContent content={message.content ?? ""} />}
+        {message.messageType === "text" && (
+          <div className={isAiQuestion ? "message-text ai-flow-question-text" : undefined}>
+            <MessageContent content={message.content ?? ""} />
+          </div>
+        )}
 
         {isAi && (
           <div className="message-text ai-text">
@@ -112,6 +137,20 @@ export function MessageItem({ message, isMine, isAiStreaming = false, onImageCli
         )}
       </div>
     </div>
+  );
+}
+
+function AiFlowLabel({ from, to }: { from: string; to: string }): JSX.Element {
+  const fromAi = from === "AI";
+  const toAi = to === "AI";
+  return (
+    <span className="ai-flow-label">
+      <span className={`ai-flow-party ${fromAi ? "ai-party" : "user-party"}`}>{from}</span>
+      <span className="ai-flow-arrow" aria-hidden="true">
+        →
+      </span>
+      <span className={`ai-flow-party ${toAi ? "ai-party" : "user-party"}`}>{to}</span>
+    </span>
   );
 }
 

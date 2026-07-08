@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AiDeltaEvent, IntegrationsInfo, Message, PublicUser, Room } from "@intra-chat/shared";
 import { fetchBuildStatus, fetchIntegrations, fetchIssue, fetchMessages, markRoomRead } from "../api";
 import { askAi, sendMessage } from "../socket";
 import { parseCommand } from "../commands";
+import { buildAiFlowMap } from "../utils/aiMessageFlow";
 import { MessageItem } from "./MessageItem";
 import { MessageInput } from "./MessageInput";
 import { GroupMembersModal } from "./GroupMembersModal";
@@ -182,6 +183,11 @@ export function ChatRoom({ room, currentUser, users, integrations, registerActiv
           ? "🤖 AI 어시스턴트"
           : "@ 대화";
 
+  const aiFlowMap = useMemo(
+    () => buildAiFlowMap(messages, room.type === "ai"),
+    [messages, room.type]
+  );
+
   return (
     <section className="chat-room">
       <header className="chat-room-header">
@@ -223,6 +229,7 @@ export function ChatRoom({ room, currentUser, users, integrations, registerActiv
             message={m}
             isMine={m.senderId === currentUser.id}
             isAiStreaming={streamingAiIds.has(m.id)}
+            aiFlowKind={aiFlowMap.get(m.id) ?? null}
             onImageClick={setLightboxUrl}
           />
         ))}

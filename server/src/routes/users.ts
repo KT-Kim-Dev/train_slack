@@ -20,10 +20,9 @@ import { broadcastUserUpdated } from "../sockets/index.js";
 import { decodeUploadFileName } from "../utils/filename.js";
 
 export const usersRouter = Router();
-usersRouter.use(requireAuth);
 
 const AVATAR_MIME = /^image\/(jpeg|png|gif|webp)$/i;
-const MAX_AVATAR_SIZE = 2 * 1024 * 1024;
+const MAX_AVATAR_SIZE = 5 * 1024 * 1024;
 
 const avatarStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, config.avatarsDir),
@@ -73,6 +72,21 @@ function allowTokenInQuery(req: AuthedRequest, res: Response, next: NextFunction
   }
 }
 
+/** 프로필 이미지 조회 — img 태그용 ?token= 인증 (전역 requireAuth 제외) */
+usersRouter.get("/:id/avatar", allowTokenInQuery, (req, res) => {
+  const id = Number(req.params.id);
+  const user = getUserById(id);
+  if (!user?.profile_image_path || !fs.existsSync(user.profile_image_path)) {
+    res.status(404).json({ error: "프로필 이미지가 없습니다." });
+    return;
+  }
+  res.setHeader("Content-Disposition", "inline");
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  res.sendFile(path.resolve(user.profile_image_path));
+});
+
+usersRouter.use(requireAuth);
+
 /** 내 온라인 상태 변경 (대화가능/바쁨/자리비움) */
 usersRouter.put("/me/status", (req: AuthedRequest, res) => {
   const schema = z.object({
@@ -96,7 +110,7 @@ usersRouter.post("/me/avatar", (req: AuthedRequest, res) => {
   avatarUpload.single("avatar")(req, res, (err: unknown) => {
     if (err) {
       if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
-        res.status(413).json({ error: "프로필 이미지는 2MB 이하여야 합니다." });
+        res.status(413).json({ error: "프로필 이미지는 5MB 이하여야 합니다." });
         return;
       }
       const message = err instanceof Error ? err.message : "업로드에 실패했습니다.";
@@ -122,19 +136,6 @@ usersRouter.post("/me/avatar", (req: AuthedRequest, res) => {
     broadcastUserUpdated(publicUser);
     res.json(publicUser);
   });
-});
-
-/** 프로필 이미지 조회 */
-usersRouter.get("/:id/avatar", allowTokenInQuery, (req, res) => {
-  const id = Number(req.params.id);
-  const user = getUserById(id);
-  if (!user?.profile_image_path || !fs.existsSync(user.profile_image_path)) {
-    res.status(404).json({ error: "프로필 이미지가 없습니다." });
-    return;
-  }
-  res.setHeader("Content-Disposition", "inline");
-  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-  res.sendFile(path.resolve(user.profile_image_path));
 });
 
 /** 사내 사용자 목록 (멤버 사이드바 / 채널 초대 / DM 대상) */

@@ -13,7 +13,7 @@ interface Props {
 export function UserAvatar({ user, size = 32, className = "", cacheBust }: Props): JSX.Element {
   const [imgError, setImgError] = useState(false);
   const initial = user.displayName.charAt(0).toUpperCase();
-  const bust = cacheBust ?? (user.profileImageUrl ? `${user.id}-${user.profileImageUrl}` : "");
+  const bust = cacheBust ?? "";
   const showImg = Boolean(user.profileImageUrl) && !imgError;
 
   useEffect(() => {
@@ -24,11 +24,13 @@ export function UserAvatar({ user, size = 32, className = "", cacheBust }: Props
     <span
       className={`user-avatar ${className}`.trim()}
       style={{ width: size, height: size, fontSize: Math.round(size * 0.42) }}
+      title={user.displayName}
     >
       {showImg ? (
         <img
-          src={avatarUrl(user.id, bust)}
+          src={avatarUrl(user.id, user.profileImageUrl, bust || undefined)}
           alt=""
+          draggable={false}
           onError={() => setImgError(true)}
         />
       ) : (

@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { PublicUser, UserPresenceStatus } from "@intra-chat/shared";
 import { db, AI_USERNAME } from "./index.js";
 import { config } from "../config.js";
@@ -33,7 +34,9 @@ export function toPublicUser(row: UserRow): PublicUser {
     isOnline: row.is_online === 1,
     lastSeen: row.last_seen,
     isAdmin: config.adminUsernames.includes(row.username),
-    profileImageUrl: row.profile_image_path ? `/api/users/${row.id}/avatar` : null,
+    profileImageUrl: row.profile_image_path
+      ? `/api/users/${row.id}/avatar?v=${encodeURIComponent(path.basename(row.profile_image_path))}`
+      : null,
     presenceStatus: normalizePresenceStatus(row.presence_status),
   };
 }
