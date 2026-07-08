@@ -68,10 +68,17 @@ ipcMain.handle("folder:pick", async (_event, defaultPath?: string): Promise<stri
   return filePaths[0] ?? null;
 });
 
-/** 새 메시지 OS 알림 (윈도우 비활성 시) */
+/** 새 메시지/일정 OS 알림 (윈도우 비활성 시) */
 ipcMain.handle(
   "notification:show",
-  (event, payload: { title: string; body: string; roomId: number }): void => {
+  (
+    event,
+    payload: {
+      title: string;
+      body: string;
+      target: { type: "room"; roomId: number } | { type: "calendar"; eventId: number };
+    }
+  ): void => {
     if (!Notification.isSupported()) return;
     const win = BrowserWindow.fromWebContents(event.sender);
     if (win?.isFocused()) return;
@@ -83,7 +90,7 @@ ipcMain.handle(
     notification.on("click", () => {
       win?.show();
       win?.focus();
-      win?.webContents.send("notification:navigate", payload.roomId);
+      win?.webContents.send("notification:navigate", payload.target);
     });
     notification.show();
   }

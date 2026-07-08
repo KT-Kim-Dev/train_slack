@@ -1,11 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AiDeltaEvent, IntegrationsInfo, Message, PublicUser, Room } from "@intra-chat/shared";
+import type {
+  AiDeltaEvent,
+  CalendarEventSocketPayload,
+  IntegrationsInfo,
+  Message,
+  PublicUser,
+  Room,
+} from "@intra-chat/shared";
 import { fetchIntegrations, fetchRooms, fetchUsers, getToken, updateStoredUser } from "../api";
-import { notifyIncomingMessage, roomNotificationLabel } from "../notifications";
+import {
+  notifyCalendarEvent,
+  notifyIncomingMessage,
+  roomNotificationLabel,
+  type NotificationNavTarget,
+} from "../notifications";
 import { connectSocket, disconnectSocket } from "../socket";
 import { sortUsers } from "../utils/sortUsers";
 import { Sidebar } from "./Sidebar";
 import { ChatRoom } from "./ChatRoom";
+import { CalendarPage } from "./CalendarPage";
 import { ToastStack } from "./ToastStack";
 
 /** 활성 채팅방이 등록하는 실시간 이벤트 핸들러 */
@@ -24,18 +37,23 @@ export function ChatPage({ currentUser, onLogout, onUserUpdated }: Props): JSX.E
   const [rooms, setRooms] = useState<Room[]>([]);
   const [users, setUsers] = useState<PublicUser[]>([]);
   const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null);
+  const [mainView, setMainView] = useState<"chat" | "calendar">("chat");
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [integrations, setIntegrations] = useState<IntegrationsInfo | null>(null);
+  const [calendarRefreshToken, setCalendarRefreshToken] = useState(0);
+  const [focusEventId, setFocusEventId] = useState<number | null>(null);
 
   // 활성 방으로 들어온 실시간 이벤트를 ChatRoom 에 전달하기 위한 콜백 등록소
   const activeRoomHandler = useRef<ActiveRoomHandlers | null>(null);
   const selectedRoomIdRef = useRef<number | null>(null);
+  const mainViewRef = useRef<"chat" | "calendar">("chat");
   const currentUserIdRef = useRef(currentUser.id);
   const roomsRef = useRef<Room[]>([]);
   const usersRef = useRef<PublicUser[]>([]);
   const onUserUpdatedRef = useRef(onUserUpdated);
   const onLogoutRef = useRef(onLogout);
   selectedRoomIdRef.current = selectedRoomId;
+  mainViewRef.current = mainView;
   currentUserIdRef.current = currentUser.id;
   roomsRef.current = rooms;
   usersRef.current = users;
@@ -85,7 +103,11 @@ export function ChatPage({ currentUser, onLogout, onUserUpdated }: Props): JSX.E
     socket.on("connect", () => setConnectionError(null));
 
     socket.on("message:new", (message) => {
-      if (message.roomId === selectedRoomIdRef.current && activeRoomHandler.current) {
+      if (
+        mainViewRef.current === "chat" &&
+        message.roomId === selectedRoomIdRef.current &&
+        activeRoomHandler.current
+      ) {
         activeRoomHandler.current.onMessage(message);
       } else {
         setRooms((prev) =>
@@ -108,6 +130,11 @@ export function ChatPage({ currentUser, onLogout, onUserUpdated }: Props): JSX.E
       if (payload.roomId === selectedRoomIdRef.current && activeRoomHandler.current) {
         activeRoomHandler.current.onAiDelta(payload);
       }
+    });
+
+    socket.on("calendar:event", (payload: CalendarEventSocketPayload) => {
+      setCalendarRefreshToken((n) => n + 1);
+      notifyCalendarEvent(payload.action, payload.event);
     });
 
     socket.on("presence:update", ({ userId, isOnline, lastSeen, presenceStatus }) => {
@@ -159,10 +186,29 @@ export function ChatPage({ currentUser, onLogout, onUserUpdated }: Props): JSX.E
     };
   }, []);
 
-  // OS 알림 클릭 시 해당 방으로 이동
+  function handleSelectRoom(roomId: number): void {
+    setMainView("chat");
+    setSelectedRoomId(roomId);
+    setRooms((prev) => prev.map((r) => (r.id === roomId ? { ...r, unreadCount: 0 } : r)));
+  }
+
+  function handleSelectCalendar(): void {
+    setMainView("calendar");
+  }
+
+  function handleNavigate(target: NotificationNavTarget): void {
+    if (target.type === "room") {
+      handleSelectRoom(target.roomId);
+      return;
+    }
+    setMainView("calendar");
+    setFocusEventId(target.eventId);
+  }
+
+  // OS 알림 클릭 시 해당 방/캘린더로 이동
   useEffect(() => {
-    const unsub = window.intraChat?.onNotificationNavigate?.((roomId) => {
-      handleSelectRoom(roomId);
+    const unsub = window.intraChat?.onNotificationNavigate?.((target) => {
+      handleNavigate(target);
     });
     return () => unsub?.();
   }, []);
@@ -184,12 +230,6 @@ export function ChatPage({ currentUser, onLogout, onUserUpdated }: Props): JSX.E
     }
   }, [reloadRooms, reloadIntegrations, onLogout]);
 
-  function handleSelectRoom(roomId: number): void {
-    setSelectedRoomId(roomId);
-    // 배지 초기화
-    setRooms((prev) => prev.map((r) => (r.id === roomId ? { ...r, unreadCount: 0 } : r)));
-  }
-
   const registerActiveHandler = useCallback((handlers: ActiveRoomHandlers | null) => {
     activeRoomHandler.current = handlers;
   }, []);
@@ -203,8 +243,10 @@ export function ChatPage({ currentUser, onLogout, onUserUpdated }: Props): JSX.E
         users={users}
         currentUser={liveCurrentUser}
         selectedRoomId={selectedRoomId}
+        activeView={mainView}
         connectionError={connectionError}
         onSelectRoom={handleSelectRoom}
+        onSelectCalendar={handleSelectCalendar}
         onRoomsChanged={reloadRooms}
         onLogout={onLogout}
         onSettingsSaved={reloadIntegrations}
@@ -213,7 +255,15 @@ export function ChatPage({ currentUser, onLogout, onUserUpdated }: Props): JSX.E
           updateStoredUser(user);
         }}
       />
-      {selectedRoom ? (
+      {mainView === "calendar" ? (
+        <CalendarPage
+          currentUser={liveCurrentUser}
+          users={users}
+          focusEventId={focusEventId}
+          onFocusConsumed={() => setFocusEventId(null)}
+          refreshToken={calendarRefreshToken}
+        />
+      ) : selectedRoom ? (
         <ChatRoom
           key={selectedRoom.id}
           room={selectedRoom}
@@ -225,7 +275,7 @@ export function ChatPage({ currentUser, onLogout, onUserUpdated }: Props): JSX.E
       ) : (
         <div className="empty-room">왼쪽에서 채팅방을 선택하거나 새로 만들어 보세요.</div>
       )}
-      <ToastStack onSelectRoom={handleSelectRoom} />
+      <ToastStack onNavigate={handleNavigate} />
     </div>
   );
 }

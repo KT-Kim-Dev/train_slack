@@ -13,7 +13,9 @@ import { adminRouter } from "./routes/admin.js";
 import { yonaRouter } from "./routes/yona.js";
 import { jenkinsRouter } from "./routes/jenkins.js";
 import { integrationsRouter } from "./routes/integrations.js";
+import { calendarRouter } from "./routes/calendar.js";
 import { startRagScheduler } from "./services/rag-scheduler.js";
+import { startCalendarReminderScheduler } from "./services/calendar-reminder.js";
 
 initDb();
 
@@ -32,6 +34,7 @@ app.use("/api/admin", adminRouter);
 app.use("/api/yona", yonaRouter);
 app.use("/api/jenkins", jenkinsRouter);
 app.use("/api/integrations", integrationsRouter);
+app.use("/api/calendar", calendarRouter);
 // 파일 라우트(/api/rooms/:id/files, /api/files/:id)와 Jenkins 웹훅(/api/webhooks/jenkins)
 app.use("/api", filesRouter);
 app.use("/api", jenkinsRouter);
@@ -51,4 +54,5 @@ initSocket(httpServer, config.corsOrigin);
 httpServer.listen(config.port, () => {
   logger.info(`Intra-Chat 서버 실행 중`, { port: config.port });
   startRagScheduler();
+  startCalendarReminderScheduler();
 });

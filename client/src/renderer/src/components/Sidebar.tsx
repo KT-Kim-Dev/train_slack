@@ -20,8 +20,10 @@ interface Props {
   users: PublicUser[];
   currentUser: PublicUser;
   selectedRoomId: number | null;
+  activeView: "chat" | "calendar";
   connectionError: string | null;
   onSelectRoom: (roomId: number) => void;
+  onSelectCalendar: () => void;
   onRoomsChanged: () => Promise<Room[]>;
   onLogout: () => void;
   onSettingsSaved?: () => void | Promise<void>;
@@ -43,8 +45,10 @@ export function Sidebar({
   users,
   currentUser,
   selectedRoomId,
+  activeView,
   connectionError,
   onSelectRoom,
+  onSelectCalendar,
   onRoomsChanged,
   onLogout,
   onSettingsSaved,
@@ -101,7 +105,7 @@ export function Sidebar({
   }
 
   function renderRoomItem(room: Room, label: string, prefix: string): JSX.Element {
-    const active = room.id === selectedRoomId;
+    const active = activeView === "chat" && room.id === selectedRoomId;
     const unread = room.unreadCount ?? 0;
     return (
       <li key={room.id} className={`room-item ${active ? "active" : ""}`}>
@@ -173,6 +177,17 @@ export function Sidebar({
         </div>
 
         <Section title="AI" items={aiRooms.map((r) => renderRoomItem(r, r.name, "🤖 "))} />
+
+        <div className="section">
+          <ul className="room-list">
+            <li className={`room-item ${activeView === "calendar" ? "active" : ""}`}>
+              <button type="button" className="room-btn" onClick={onSelectCalendar}>
+                <span className="room-name">📅 캘린더</span>
+              </button>
+            </li>
+          </ul>
+        </div>
+
         <Section
           title="채널"
           onAdd={() => setModalType("channel")}

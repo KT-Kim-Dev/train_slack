@@ -151,7 +151,77 @@ export interface BuildCard {
   logUrl: string | null;
 }
 
-export type CardPayload = IssueCard | BuildCard;
+export interface ScheduleCardItem {
+  id: number;
+  title: string;
+  startAt: string;
+  endAt: string;
+  allDay: boolean;
+  location: string | null;
+  creatorName: string;
+  attendeeNames: string[];
+}
+
+/** 채팅방 일정 조회 카드 (/calendar) 및 참석 변경 DM 알림 */
+export interface ScheduleCard {
+  kind: "schedule";
+  /** 조회 대상 날짜 YYYY-MM-DD (로컬) */
+  date: string;
+  label: string;
+  events: ScheduleCardItem[];
+  /** DM 참석자 변경 알림: 추가/삭제 */
+  notice?: "added" | "removed";
+}
+
+export type CardPayload = IssueCard | BuildCard | ScheduleCard;
+
+// ---------------------------------------------------------------------------
+// 캘린더 일정
+// ---------------------------------------------------------------------------
+
+export type CalendarVisibility = "private" | "company";
+export type CalendarEventAction = "created" | "updated" | "deleted" | "reminder";
+
+export interface CalendarAttendee {
+  userId: number;
+  displayName: string;
+  username: string;
+  responseStatus: "invited";
+}
+
+export interface CalendarEvent {
+  id: number;
+  title: string;
+  description: string | null;
+  location: string | null;
+  startAt: string;
+  endAt: string;
+  allDay: boolean;
+  visibility: CalendarVisibility;
+  reminderMinutes: number;
+  createdBy: number;
+  creatorName: string;
+  createdAt: string;
+  updatedAt: string;
+  attendees: CalendarAttendee[];
+}
+
+export interface CalendarEventInput {
+  title: string;
+  description?: string | null;
+  location?: string | null;
+  startAt: string;
+  endAt: string;
+  allDay?: boolean;
+  visibility?: CalendarVisibility;
+  reminderMinutes?: number;
+  attendeeIds?: number[];
+}
+
+export interface CalendarEventSocketPayload {
+  action: CalendarEventAction;
+  event: CalendarEvent;
+}
 
 // ---------------------------------------------------------------------------
 // REST API 요청/응답
@@ -251,6 +321,7 @@ export interface ServerToClientEvents {
   /** 숨긴 DM 등이 새 메시지로 다시 목록에 나타날 때 */
   "room:unhidden": (room: Room) => void;
   "ai:delta": (payload: AiDeltaEvent) => void;
+  "calendar:event": (payload: CalendarEventSocketPayload) => void;
   "error": (payload: { message: string }) => void;
 }
 

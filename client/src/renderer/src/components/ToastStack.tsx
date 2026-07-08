@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
+import type { NotificationNavTarget } from "../notifications";
 
 export interface ToastItem {
   id: number;
   title: string;
   body: string;
-  roomId: number;
+  target: NotificationNavTarget;
 }
 
 let pushToastFn: ((toast: Omit<ToastItem, "id">) => void) | null = null;
@@ -19,10 +20,10 @@ export function pushToast(toast: Omit<ToastItem, "id">): void {
 }
 
 interface Props {
-  onSelectRoom: (roomId: number) => void;
+  onNavigate: (target: NotificationNavTarget) => void;
 }
 
-export function ToastStack({ onSelectRoom }: Props): JSX.Element {
+export function ToastStack({ onNavigate }: Props): JSX.Element {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
   const push = useCallback((toast: Omit<ToastItem, "id">) => {
@@ -50,7 +51,7 @@ export function ToastStack({ onSelectRoom }: Props): JSX.Element {
           type="button"
           className="toast-item"
           onClick={() => {
-            onSelectRoom(t.roomId);
+            onNavigate(t.target);
             setToasts((prev) => prev.filter((x) => x.id !== t.id));
           }}
         >

@@ -1,5 +1,9 @@
-import type { Message, Room } from "@intra-chat/shared";
+import type { CalendarEvent, CalendarEventAction, Message, Room } from "@intra-chat/shared";
 import { pushToast } from "./components/ToastStack";
+
+export type NotificationNavTarget =
+  | { type: "room"; roomId: number }
+  | { type: "calendar"; eventId: number };
 
 interface NotifyParams {
   room: Room;
@@ -18,10 +22,47 @@ export function notifyIncomingMessage({ room, message, roomLabel }: NotifyParams
   const body = `${message.senderName}: ${previewText(message)}`;
   const title = roomLabel;
 
-  pushToast({ title, body, roomId: room.id });
+  pushToast({ title, body, target: { type: "room", roomId: room.id } });
 
   if (window.intraChat?.showNotification) {
-    void window.intraChat.showNotification({ title, body, roomId: room.id });
+    void window.intraChat.showNotification({
+      title,
+      body,
+      target: { type: "room", roomId: room.id },
+    });
+  }
+}
+
+const CALENDAR_ACTION_TITLE: Record<CalendarEventAction, string> = {
+  created: "새 일정 초대",
+  updated: "일정 변경",
+  deleted: "일정 삭제",
+  reminder: "일정 알림",
+};
+
+export function notifyCalendarEvent(
+  action: CalendarEventAction,
+  event: CalendarEvent
+): void {
+  const title = CALENDAR_ACTION_TITLE[action];
+  const when = event.allDay
+    ? "종일"
+    : new Date(event.startAt).toLocaleString("ko-KR", {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+  const body = `${event.title} · ${when}`;
+
+  pushToast({ title, body, target: { type: "calendar", eventId: event.id } });
+
+  if (window.intraChat?.showNotification) {
+    void window.intraChat.showNotification({
+      title,
+      body,
+      target: { type: "calendar", eventId: event.id },
+    });
   }
 }
 

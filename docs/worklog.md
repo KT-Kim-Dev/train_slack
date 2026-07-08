@@ -139,3 +139,68 @@
 | `54dfa62` | feat: 관리자 연동 설정 UI 추가 |
 | `65ccbfa` | build: Windows portable exe 빌드 설정 완성 |
 | `77354c8` | fix: 기존 DB 스키마 자동 마이그레이션 추가 |
+
+---
+
+## 2026-07-08 — 캘린더(일정) 기능 추가 및 개선
+
+### 배경
+사이드바(AI와 채널 사이)에 구글 캘린더형 월간 일정 관리가 필요함.  
+공개 범위는 내 일정 기본 + 전체 일정 토글, 1차 범위에 시작 전 리마인더 포함.
+
+### 서버
+- DB: `calendar_events`, `calendar_attendees`, `calendar_reminder_sent`
+- REST: `/api/calendar/events` CRUD, `/api/calendar/schedule` (채팅 카드 게시)
+- Socket: `calendar:event` (created/updated/deleted/reminder), 사용자별 `user:{id}` 룸
+- `calendar-reminder.ts`: 30초 폴링, 시작 N분 전 1회 알림
+- `calendar-dm-notify.ts`: 참석자 추가/삭제 시 생성자↔참석자 DM에 일정 카드 전송
+- 조회: `scope=all`이면 전사 공개(`company`) + 내 일정/참석 일정; 기간 필터는 Date 기반
+
+### 클라이언트
+- 사이드바 `📅 캘린더` → `CalendarPage` 월간 그리드 + `EventModal`
+- 주말(토·일) 날짜/헤더 붉은색, 일정 칩 색상(동일 id 동일색, 같은 날 다른 색)
+- 기본 탭 **전체 일정** (공개 일정이 다른 계정에 보이도록)
+- `/calendar`, `/cal`, `/일정` 명령 → 일정 카드(기간 표기 포함)
+- 알림 Toast/OS 네비게이션을 room뿐 아니라 calendar 대상으로 확장
+
+### 테스트/정리
+- API 스모크: CRUD, 공개/참석 가시성, 참석자 DM 카드
+- 테스트로 생긴 `DM알림테스트`(깨진 `DM?????` 표시) DM 카드 2건 DB에서 삭제
+
+### 주요 신규 파일
+- `server/src/db/calendar.ts`, `routes/calendar.ts`
+- `server/src/services/calendar-reminder.ts`, `calendar-dm-notify.ts`
+- `client/.../CalendarPage.tsx`, `EventModal.tsx`, `utils/eventColors.ts`
+
+
+---
+
+## 2026-07-08 — 캘린더(일정) 기능 추가 및 개선
+
+### 배경
+사이드바(AI와 채널 사이)에 구글 캘린더형 월간 일정 관리가 필요함.  
+공개 범위는 내 일정 기본 + 전체 일정 토글, 1차 범위에 시작 전 리마인더 포함.
+
+### 서버
+- DB: `calendar_events`, `calendar_attendees`, `calendar_reminder_sent`
+- REST: `/api/calendar/events` CRUD, `/api/calendar/schedule` (채팅 카드 게시)
+- Socket: `calendar:event` (created/updated/deleted/reminder), 사용자별 `user:{id}` 룸
+- `calendar-reminder.ts`: 30초 폴링, 시작 N분 전 1회 알림
+- `calendar-dm-notify.ts`: 참석자 추가/삭제 시 생성자↔참석자 DM에 일정 카드 전송
+- 조회: `scope=all`이면 전사 공개(`company`) + 내 일정/참석 일정; 기간 필터는 Date 기반
+
+### 클라이언트
+- 사이드바 `📅 캘린더` → `CalendarPage` 월간 그리드 + `EventModal`
+- 주말(토·일) 날짜/헤더 붉은색, 일정 칩 색상(동일 id 동일색, 같은 날 다른 색)
+- 기본 탭 **전체 일정** (공개 일정이 다른 계정에 보이도록)
+- `/calendar`, `/cal`, `/일정` 명령 → 일정 카드(기간 표기 포함)
+- 알림 Toast/OS 네비게이션을 room뿐 아니라 calendar 대상으로 확장
+
+### 테스트/정리
+- API 스모크: CRUD, 공개/참석 가시성, 참석자 DM 카드
+- 테스트로 생긴 `DM알림테스트`(깨진 `DM?????` 표시) DM 카드 2건 DB에서 삭제
+
+### 주요 신규 파일
+- `server/src/db/calendar.ts`, `routes/calendar.ts`
+- `server/src/services/calendar-reminder.ts`, `calendar-dm-notify.ts`
+- `client/.../CalendarPage.tsx`, `EventModal.tsx`, `utils/eventColors.ts`

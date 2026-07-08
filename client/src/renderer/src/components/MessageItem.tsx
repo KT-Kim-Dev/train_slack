@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { BuildCard, IssueCard, Message } from "@intra-chat/shared";
+import type { BuildCard, IssueCard, Message, ScheduleCard } from "@intra-chat/shared";
 import { fileUrl } from "../api";
 import { MessageContent } from "./MessageContent";
 import type { AiFlowKind } from "../utils/aiMessageFlow";
@@ -109,6 +109,9 @@ export function MessageItem({
         {message.messageType === "card" && message.metadata?.kind === "build" && (
           <BuildCardView card={message.metadata} />
         )}
+        {message.messageType === "card" && message.metadata?.kind === "schedule" && (
+          <ScheduleCardView card={message.metadata} />
+        )}
 
         {message.messageType === "image" && url && (
           <div className="message-image">
@@ -216,6 +219,91 @@ function BuildCardView({ card }: { card: BuildCard }): JSX.Element {
         <a className="card-link" href={card.logUrl} target="_blank" rel="noreferrer">
           빌드 로그 보기 →
         </a>
+      )}
+    </div>
+  );
+}
+
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+function formatScheduleDate(d: Date): string {
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+function formatScheduleClock(d: Date): string {
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+function sameLocalDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+/**
+ * 조회 카드용 기간(기한) 표기.
+ * 종일은 end exclusive 이므로 표시용 종료일은 -1일.
+ */
+function formatSchedulePeriod(startAt: string, endAt: string, allDay: boolean): string {
+  const start = new Date(startAt);
+  const end = new Date(endAt);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return "기간 미정";
+
+  if (allDay) {
+    const displayEnd = new Date(end);
+    displayEnd.setDate(displayEnd.getDate() - 1);
+    if (sameLocalDay(start, displayEnd) || displayEnd < start) {
+      return `종일 · ${formatScheduleDate(start)}`;
+    }
+    return `종일 · ${formatScheduleDate(start)} – ${formatScheduleDate(displayEnd)}`;
+  }
+
+  if (sameLocalDay(start, end)) {
+    return `${formatScheduleDate(start)} ${formatScheduleClock(start)} – ${formatScheduleClock(end)}`;
+  }
+  return `${formatScheduleDate(start)} ${formatScheduleClock(start)} – ${formatScheduleDate(end)} ${formatScheduleClock(end)}`;
+}
+
+/** 캘린더 일정 조회 카드 (/calendar) */
+function ScheduleCardView({ card }: { card: ScheduleCard }): JSX.Element {
+  const noticeText =
+    card.notice === "added"
+      ? "일정에 추가되었습니다."
+      : card.notice === "removed"
+        ? "일정에 삭제되었습니다."
+        : null;
+
+  return (
+    <div className={`card schedule-card ${card.notice ? `notice-${card.notice}` : ""}`}>
+      <div className="card-header">
+        <span className="card-badge schedule">CALENDAR</span>
+        <span className="card-status">{noticeText ?? card.label}</span>
+      </div>
+      {noticeText && <div className="schedule-notice">{noticeText}</div>}
+      {card.events.length === 0 ? (
+        <div className="card-title">등록된 일정이 없습니다.</div>
+      ) : (
+        <ul className="schedule-list">
+          {card.events.map((ev) => (
+            <li key={ev.id} className="schedule-list-item">
+              <div className="schedule-item-title">{ev.title}</div>
+              <div className="schedule-item-meta">
+                <span className="schedule-item-period">
+                  기간: {formatSchedulePeriod(ev.startAt, ev.endAt, ev.allDay)}
+                </span>
+                {ev.location && <span>📍 {ev.location}</span>}
+                <span>작성: {ev.creatorName}</span>
+                {ev.attendeeNames.length > 0 && (
+                  <span>참여: {ev.attendeeNames.join(", ")}</span>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

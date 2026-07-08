@@ -1,6 +1,8 @@
 import type { Server as HttpServer } from "node:http";
 import { Server, type Socket } from "socket.io";
 import type {
+  CalendarEvent,
+  CalendarEventAction,
   ClientToServerEvents,
   Message,
   PublicUser,
@@ -39,6 +41,23 @@ const onlineSockets = new Map<number, Set<string>>();
 
 function roomChannel(roomId: number): string {
   return `room:${roomId}`;
+}
+
+function userChannel(userId: number): string {
+  return `user:${userId}`;
+}
+
+/** 캘린더 일정 변경/리마인더를 대상 사용자에게 전달 */
+export function notifyCalendarEvent(
+  action: CalendarEventAction,
+  event: CalendarEvent,
+  userIds: number[]
+): void {
+  const server = getIo();
+  const payload = { action, event };
+  for (const userId of [...new Set(userIds)]) {
+    server.to(userChannel(userId)).emit("calendar:event", payload);
+  }
 }
 
 export function getIo(): IOServer {
@@ -193,6 +212,9 @@ function handleConnect(socket: AppSocket, userId: number, username: string): voi
   const wasOffline = set.size === 0;
   set.add(socket.id);
   onlineSockets.set(userId, set);
+
+  // 사용자 개인 채널 (캘린더 알림 등)
+  socket.join(userChannel(userId));
 
   // 참여 중인 모든 방 채널에 합류시켜 어느 방에서든 실시간 수신 가능하게 함
   const rooms = getRoomIdsForUser(userId);

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AiDeltaEvent, IntegrationsInfo, Message, PublicUser, Room } from "@intra-chat/shared";
-import { fetchBuildStatus, fetchIntegrations, fetchIssue, fetchMessages, markRoomRead } from "../api";
+import { fetchBuildStatus, fetchIntegrations, fetchIssue, fetchMessages, fetchScheduleForRoom, markRoomRead } from "../api";
 import { askAi, sendMessage } from "../socket";
-import { parseCommand } from "../commands";
+import { localDayRangeIso, parseCommand } from "../commands";
 import { buildAiFlowMap } from "../utils/aiMessageFlow";
 import { MessageItem } from "./MessageItem";
 import { MessageInput } from "./MessageInput";
@@ -157,6 +157,17 @@ export function ChatRoom({ room, currentUser, users, integrations, registerActiv
         ensureEnabled("jenkins", "Jenkins");
         setBuildToConfirm(parsed.project); // FR-44: 실행 전 확인 모달
         return;
+      case "calendar": {
+        const { from, to } = localDayRangeIso(parsed.date);
+        await fetchScheduleForRoom({
+          roomId: room.id,
+          date: parsed.date,
+          from,
+          to,
+          scope: "all",
+        });
+        return;
+      }
       case "error":
         throw new Error(parsed.message);
     }

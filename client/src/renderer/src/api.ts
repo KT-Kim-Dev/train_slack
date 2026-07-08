@@ -3,6 +3,8 @@ import type {
   AdminUserView,
   BuildStartResponse,
   BuildStatusResponse,
+  CalendarEvent,
+  CalendarEventInput,
   CreateIssueRequest,
   CreateIssueResponse,
   IntegrationsInfo,
@@ -15,6 +17,7 @@ import type {
   RagStats,
   RagSyncResult,
   Room,
+  ScheduleCard,
   UserPresenceStatus,
 } from "@intra-chat/shared";
 import { SERVER_URL } from "./config";
@@ -290,6 +293,67 @@ export async function fetchBuildStatus(
   return request<BuildStatusResponse>(
     `/api/jenkins/build/${encodeURIComponent(project)}/status?roomId=${roomId}`
   );
+}
+
+// ---------------------------------------------------------------------------
+// 캘린더
+// ---------------------------------------------------------------------------
+
+export async function fetchCalendarEvents(params: {
+  from: string;
+  to: string;
+  scope?: "mine" | "all";
+}): Promise<CalendarEvent[]> {
+  const scope = params.scope ?? "mine";
+  const q = new URLSearchParams({
+    from: params.from,
+    to: params.to,
+    scope,
+  });
+  return request<CalendarEvent[]>(`/api/calendar/events?${q.toString()}`);
+}
+
+export async function fetchCalendarEvent(id: number): Promise<CalendarEvent> {
+  return request<CalendarEvent>(`/api/calendar/events/${id}`);
+}
+
+export async function createCalendarEvent(input: CalendarEventInput): Promise<CalendarEvent> {
+  return request<CalendarEvent>("/api/calendar/events", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateCalendarEvent(
+  id: number,
+  input: CalendarEventInput
+): Promise<CalendarEvent> {
+  return request<CalendarEvent>(`/api/calendar/events/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteCalendarEvent(id: number): Promise<void> {
+  await request(`/api/calendar/events/${id}`, { method: "DELETE" });
+}
+
+/** 특정일 일정을 조회하고 채팅방에 카드로 게시 */
+export async function fetchScheduleForRoom(params: {
+  roomId: number;
+  date: string;
+  from: string;
+  to: string;
+  scope?: "mine" | "all";
+}): Promise<ScheduleCard> {
+  const q = new URLSearchParams({
+    roomId: String(params.roomId),
+    date: params.date,
+    from: params.from,
+    to: params.to,
+    scope: params.scope ?? "mine",
+  });
+  return request<ScheduleCard>(`/api/calendar/schedule?${q.toString()}`);
 }
 
 /** 파일 다운로드/미리보기용 URL (쿼리 토큰 포함) */
