@@ -1,7 +1,8 @@
 import { useState } from "react";
-import type { BuildCard, IssueCard, Message, ScheduleCard } from "@intra-chat/shared";
+import type { BuildCard, IssueCard, Message, PublicUser, ScheduleCard } from "@intra-chat/shared";
 import { fileUrl } from "../api";
 import { MessageContent } from "./MessageContent";
+import { UserAvatar } from "./UserAvatar";
 import type { AiFlowKind } from "../utils/aiMessageFlow";
 
 interface Props {
@@ -9,6 +10,7 @@ interface Props {
   isMine: boolean;
   isAiStreaming?: boolean;
   aiFlowKind?: AiFlowKind | null;
+  senderUser?: Pick<PublicUser, "id" | "displayName" | "profileImageUrl">;
   onImageClick: (url: string) => void;
 }
 
@@ -39,6 +41,7 @@ export function MessageItem({
   isMine,
   isAiStreaming = false,
   aiFlowKind = null,
+  senderUser,
   onImageClick,
 }: Props): JSX.Element {
   const [downloading, setDownloading] = useState(false);
@@ -71,13 +74,24 @@ export function MessageItem({
     );
   }
 
-  const avatarLabel = isAiAnswer || (isAi && !aiFlowKind) ? "🤖" : message.senderName?.[0] ?? "?";
+  const showBotAvatar = isAiAnswer || (isAi && !aiFlowKind);
+  const resolvedSender = senderUser ?? {
+    id: message.senderId,
+    displayName: message.senderName ?? "?",
+    profileImageUrl: null,
+  };
 
   return (
     <div
       className={`message ${isMine ? "mine" : ""} ${isAi ? "ai" : ""} ${isAiQuestion ? "ai-flow-question" : ""} ${isAiAnswer ? "ai-flow-answer" : ""}`}
     >
-      <div className="message-avatar">{avatarLabel}</div>
+      {showBotAvatar ? (
+        <span className="user-avatar message-avatar-bot" style={{ width: 36, height: 36, fontSize: 18 }}>
+          🤖
+        </span>
+      ) : (
+        <UserAvatar user={resolvedSender} size={36} className="message-user-avatar" />
+      )}
       <div className="message-body">
         <div className="message-meta">
           {isAiQuestion ? (

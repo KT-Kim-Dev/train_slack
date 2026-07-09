@@ -696,21 +696,15 @@ body {
   display: flex;
   gap: 10px;
 }
-.message-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 6px;
-  background: var(--accent);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
+.message-avatar-bot {
+  background: #10a37f;
   flex-shrink: 0;
-  text-transform: uppercase;
 }
-.message.mine .message-avatar {
-  background: #7c3aed;
+.message.ai-flow-answer .message-avatar-bot {
+  background: #10a37f;
+}
+.message-user-avatar {
+  flex-shrink: 0;
 }
 .message-body {
   min-width: 0;
@@ -1202,9 +1196,6 @@ body {
 }
 
 /* ---------- AI / 명령어 / 카드 ---------- */
-.message.ai .message-avatar {
-  background: #10a37f;
-}
 .ai-flow-label {
   display: inline-flex;
   align-items: center;
@@ -1229,12 +1220,6 @@ body {
   color: var(--text-muted);
   font-size: 13px;
   font-weight: 600;
-}
-.message.ai-flow-question .message-avatar {
-  background: #7c3aed;
-}
-.message.ai-flow-answer .message-avatar {
-  background: #10a37f;
 }
 .ai-flow-question-text {
   background: rgba(124, 58, 237, 0.08);

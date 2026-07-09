@@ -202,6 +202,12 @@ export function ChatRoom({ room, currentUser, users, integrations, registerActiv
     [messages, room.type]
   );
 
+  const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
+
+  function resolveSenderUser(senderId: number): Pick<PublicUser, "id" | "displayName" | "profileImageUrl"> | undefined {
+    return userById.get(senderId) ?? (senderId === currentUser.id ? currentUser : undefined);
+  }
+
   return (
     <section className="chat-room">
       <header className="chat-room-header">
@@ -244,6 +250,7 @@ export function ChatRoom({ room, currentUser, users, integrations, registerActiv
             isMine={m.senderId === currentUser.id}
             isAiStreaming={streamingAiIds.has(m.id)}
             aiFlowKind={aiFlowMap.get(m.id) ?? null}
+            senderUser={resolveSenderUser(m.senderId)}
             onImageClick={setLightboxUrl}
           />
         ))}

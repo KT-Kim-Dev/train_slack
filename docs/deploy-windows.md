@@ -6,9 +6,10 @@ Node.js·Electron 등 **별도 설치 없이** Windows PC에 배포하는 방법
 
 | 구분 | 명령 | 산출물 |
 |---|---|---|
-| **서버** | `npm run package:server:win` | `release/server/Intra-Chat-Server-{version}-win.zip` |
+| **서버 (최초 설치)** | `npm run package:server:win` | `release/server/Intra-Chat-Server-{version}-win.zip` |
+| **서버 (업데이트)** | `npm run package:server:win` | `release/server/Intra-Chat-Server-{version}-update-win.zip` |
 | **클라이언트** | `npm run package:client:win` | `client/release/Intra-Chat-{version}-portable.exe` |
-| **둘 다** | `npm run package:win` | 위 두 가지 모두 생성 |
+| **둘 다** | `npm run package:win` | 위 세 가지 모두 생성 |
 
 > 패키징은 **인터넷 연결 가능한 빌드 PC**(macOS/Windows 모두 가능)에서 실행합니다.
 > 완성된 zip/exe 만 USB·공유폴더로 사내 Windows PC에 반입하면 됩니다.
@@ -28,14 +29,48 @@ npm run package:server:win
 
 1. `release/server/Intra-Chat-Server-0.1.0-win.zip` 압축 해제
 2. `app\.env.example` → `app\.env` 복사 후 `JWT_SECRET` 변경
-3. `create-user.bat` 실행 → 관리자 계정 생성
-   ```bat
-   create-user.bat --username admin --password admin1234 --name "관리자"
-   ```
-4. `start-server.bat` 실행
+3. `start-server.bat` 실행
+4. 클라이언트에서 **admin / admin1234** 로 로그인 (최초 기동 시 자동 생성)
 5. Windows 방화벽 **TCP 3000** 허용
 
 포함 내용: `node.exe`(포터블 Node.js), 서버 프로그램, SQLite·업로드·로그 폴더
+
+---
+
+## 1-1. 서버 업데이트 (데이터 유지)
+
+기존 사용자·대화·첨부파일·`.env` 설정을 **그대로 두고** 프로그램만 교체합니다.
+
+### 빌드 (개발 PC)
+
+```bash
+npm run package:server:win
+```
+
+→ `release/server/Intra-Chat-Server-{version}-update-win.zip` 이 함께 생성됩니다.
+
+### 사내 Windows 서버 PC에서 적용
+
+1. **서버 중지** — `start-server.bat` 창 종료 (Ctrl+C)
+2. (권장) `app\data`, `app\uploads`, `app\.env` 백업
+3. update ZIP을 **임시 폴더**에 압축 해제 (기존 서버 폴더에 덮어쓰지 않음)
+4. `update-server.bat` 실행:
+
+   ```bat
+   update-server.bat "D:\Intra-Chat\Intra-Chat-Server-0.1.0-win"
+   ```
+
+   따옴표 안에 **기존 서버가 설치된 폴더** 경로를 넣습니다.
+
+5. `start-server.bat` 으로 재시작
+
+| 구분 | 업데이트 시 동작 |
+|---|---|
+| **교체** | `app\dist`, `app\node_modules`, `node.exe`, bat 스크립트 |
+| **유지** | `app\data\` (DB), `app\uploads\`, `app\logs\`, `app\.env`, `app\RAG\` |
+
+> 새 버전에서 `.env` 항목이 추가되면 `app\.env.example`과 비교해 수동 반영하세요.
+> DB 스키마는 서버 기동 시 자동 마이그레이션됩니다.
 
 ---
 

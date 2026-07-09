@@ -1,6 +1,9 @@
 import Database from "better-sqlite3";
+import bcrypt from "bcryptjs";
 import { config } from "../config.js";
 import { logger } from "../logger.js";
+import { createUser, getUserByUsername } from "./users.js";
+import { addMember } from "./rooms.js";
 
 /**
  * SQLite 연결 및 스키마 초기화.
@@ -155,6 +158,7 @@ export function initDb(): void {
   db.exec(SCHEMA);
   runMigrations();
   ensureDefaultChannel();
+  ensureDefaultAdmin();
   ensureAiUser();
   logger.info("데이터베이스 초기화 완료", { dbPath: config.dbPath });
 }
@@ -271,6 +275,24 @@ function runMigrations(): void {
     logger.info("DB 마이그레이션: users.profile_image_path 추가");
     db.exec("ALTER TABLE users ADD COLUMN profile_image_path TEXT");
   }
+}
+
+/**
+ * PoC 기본 관리자 계정을 보장한다 (admin / admin1234).
+ * 이미 존재하면 비밀번호를 변경하지 않는다.
+ */
+function ensureDefaultAdmin(): void {
+  const username = "admin";
+  if (getUserByUsername(username)) return;
+
+  const passwordHash = bcrypt.hashSync("admin1234", 10);
+  const user = createUser({
+    username,
+    passwordHash,
+    displayName: "관리자",
+  });
+  addMember(getDefaultChannelId(), user.id);
+  logger.info("기본 관리자 계정 생성", { username });
 }
 
 /**
