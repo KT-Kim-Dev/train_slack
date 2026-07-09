@@ -789,6 +789,30 @@ body {
   cursor: pointer;
   display: block;
 }
+.message-image-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+.image-download-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 10px;
+}
+.image-download-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: rgba(124, 58, 237, 0.1);
+}
+.image-download-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
 .file-caption,
 .file-size {
   color: var(--text-muted);
@@ -1470,10 +1494,53 @@ body {
   justify-content: center;
   z-index: 200;
 }
-.lightbox-img {
+.lightbox-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   max-width: 90vw;
   max-height: 90vh;
+}
+.lightbox-img {
+  max-width: 90vw;
+  max-height: calc(90vh - 56px);
   border-radius: 6px;
+}
+.lightbox-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  color: #fff;
+}
+.lightbox-filename {
+  font-size: 13px;
+  opacity: 0.85;
+  max-width: 50vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lightbox-download-btn {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 6px 14px;
+}
+.lightbox-download-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.2);
+}
+.lightbox-download-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.lightbox-download-error {
+  margin-top: 8px;
+  color: #f87171;
+  font-size: 12px;
 }
 .lightbox-close {
   position: absolute;

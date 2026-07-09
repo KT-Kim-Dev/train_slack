@@ -25,7 +25,11 @@ export function ChatRoom({ room, currentUser, users, integrations, registerActiv
   const [hasMore, setHasMore] = useState(false);
   const [nextCursor, setNextCursor] = useState<number | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
-  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [lightboxImage, setLightboxImage] = useState<{
+    url: string;
+    fileName: string;
+    fileSize: number | null;
+  } | null>(null);
   const [showIssueModal, setShowIssueModal] = useState(false);
   const [buildToConfirm, setBuildToConfirm] = useState<string | null>(null);
   const [streamingAiIds, setStreamingAiIds] = useState<Set<number>>(() => new Set());
@@ -263,7 +267,7 @@ export function ChatRoom({ room, currentUser, users, integrations, registerActiv
             isAiStreaming={streamingAiIds.has(m.id)}
             aiFlowKind={aiFlowMap.get(m.id) ?? null}
             senderUser={resolveSenderUser(m.senderId)}
-            onImageClick={setLightboxUrl}
+            onImageClick={setLightboxImage}
           />
         ))}
         {messages.length === 0 && (
@@ -283,7 +287,14 @@ export function ChatRoom({ room, currentUser, users, integrations, registerActiv
         onSubmit={handleSubmit}
       />
 
-      {lightboxUrl && <ImageLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />}
+      {lightboxImage && (
+        <ImageLightbox
+          url={lightboxImage.url}
+          fileName={lightboxImage.fileName}
+          fileSize={lightboxImage.fileSize}
+          onClose={() => setLightboxImage(null)}
+        />
+      )}
       {showIssueModal && (
         <IssueCreateModal
           roomId={room.id}

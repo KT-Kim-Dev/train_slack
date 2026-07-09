@@ -11,7 +11,7 @@ interface Props {
   isAiStreaming?: boolean;
   aiFlowKind?: AiFlowKind | null;
   senderUser?: Pick<PublicUser, "id" | "displayName" | "profileImageUrl">;
-  onImageClick: (url: string) => void;
+  onImageClick: (payload: { url: string; fileName: string; fileSize: number | null }) => void;
 }
 
 function formatTime(iso: string): string {
@@ -49,14 +49,15 @@ export function MessageItem({
   const url = message.fileUrl ? fileUrl(message.fileUrl) : null;
 
   async function handleDownload(): Promise<void> {
-    if (!url || !message.fileName) return;
+    if (!url) return;
+    const fileName = message.fileName ?? `image-${message.id}.jpg`;
     setDownloading(true);
     setDownloadError(null);
     try {
       if (window.intraChat?.downloadFile) {
         await window.intraChat.downloadFile({
           url,
-          fileName: message.fileName,
+          fileName,
           expectedSize: message.fileSize,
         });
         return;
@@ -67,7 +68,7 @@ export function MessageItem({
       if (message.fileSize != null && buffer.byteLength !== message.fileSize) {
         throw new Error("다운로드된 파일 크기가 원본과 일치하지 않습니다.");
       }
-      await window.intraChat.saveFile(message.fileName, buffer);
+      await window.intraChat.saveFile(fileName, buffer);
     } catch (err) {
       setDownloadError(err instanceof Error ? err.message : "다운로드 실패");
     } finally {
@@ -158,12 +159,29 @@ export function MessageItem({
             <img
               src={url}
               alt={message.fileName ?? "image"}
-              onClick={() => onImageClick(url)}
+              onClick={() =>
+                onImageClick({
+                  url,
+                  fileName: message.fileName ?? `image-${message.id}.jpg`,
+                  fileSize: message.fileSize,
+                })
+              }
               loading="lazy"
             />
-            <div className="file-caption">
-              {message.fileName} · {formatSize(message.fileSize)}
+            <div className="message-image-actions">
+              <span className="file-caption">
+                {message.fileName} · {formatSize(message.fileSize)}
+              </span>
+              <button
+                type="button"
+                className="image-download-btn"
+                onClick={() => void handleDownload()}
+                disabled={downloading}
+              >
+                {downloading ? "저장 중..." : "다운로드"}
+              </button>
             </div>
+            {downloadError && <div className="file-download-error">{downloadError}</div>}
           </div>
         )}
 
