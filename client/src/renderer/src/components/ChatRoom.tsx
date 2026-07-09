@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AiDeltaEvent, IntegrationsInfo, Message, PublicUser, Room } from "@intra-chat/shared";
 import { fetchBuildStatus, fetchIntegrations, fetchIssue, fetchMessages, fetchRagFileList, fetchScheduleForRoom, markRoomRead } from "../api";
-import { askAi, sendMessage } from "../socket";
+import { askAi, sendEarthquake, sendMassEarthquake, sendMessage } from "../socket";
 import { localDayRangeIso, parseCommand } from "../commands";
 import { buildAiFlowMap } from "../utils/aiMessageFlow";
 import { MessageItem } from "./MessageItem";
@@ -171,6 +171,18 @@ export function ChatRoom({ room, currentUser, users, integrations, registerActiv
       case "rag-list":
         await fetchRagFileList(room.id);
         return;
+      case "earthquake":
+        if (room.type !== "dm") {
+          throw new Error("다이렉트 메시지에서만 사용할 수 있습니다.");
+        }
+        await sendEarthquake(room.id);
+        return;
+      case "mass-earthquake":
+        if (room.type !== "channel") {
+          throw new Error("채널에서만 사용할 수 있습니다.");
+        }
+        await sendMassEarthquake(room.id);
+        return;
       case "error":
         throw new Error(parsed.message);
     }
@@ -266,6 +278,8 @@ export function ChatRoom({ room, currentUser, users, integrations, registerActiv
       <MessageInput
         roomId={room.id}
         isAiRoom={room.type === "ai"}
+        isDmRoom={room.type === "dm"}
+        isChannelRoom={room.type === "channel"}
         onSubmit={handleSubmit}
       />
 

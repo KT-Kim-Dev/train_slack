@@ -14,10 +14,12 @@ import { getUserById, setOnline, toPublicUser } from "../db/users.js";
 import {
   getContextMessages,
   insertAiPlaceholder,
+  insertEarthquakeSystemMessage,
+  insertMassEarthquakeSystemMessage,
   insertTextMessage,
   setMessageContent,
 } from "../db/messages.js";
-import { getRoomById, getRoomIdsForUser, getUnreadCountForUser, isMember, markRoomRead, toRoom, unhideDmRecipients } from "../db/rooms.js";
+import { getRoomById, getRoomIdsForUser, getUnreadCountForUser, getDmPeerId, getActiveMemberIds, isMember, markRoomRead, toRoom, unhideDmRecipients } from "../db/rooms.js";
 import { getSettings } from "../db/settings.js";
 import { logCommand } from "../db/integrations.js";
 import { appendRagContext, buildAiSystemPrompt } from "../services/ai-prompt.js";
@@ -35,6 +37,28 @@ type IOServer = Server<ClientToServerEvents, ServerToClientEvents, Record<string
 type AppSocket = Socket<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>;
 
 let io: IOServer | null = null;
+
+/** /지진·/전체지진 스팸 방지 (kind:roomId:senderId → timestamp) */
+const earthquakeCooldown = new Map<string, number>();
+const EARTHQUAKE_COOLDOWN_MS = 3000;
+
+function emitEarthquakeShake(userIds: number[], roomId: number): void {
+  const server = getIo();
+  for (const targetId of userIds) {
+    server.to(userChannel(targetId)).emit("room:earthquake:shake", { roomId });
+  }
+}
+
+function checkEarthquakeCooldown(kind: string, roomId: number, userId: number): string | null {
+  const cooldownKey = `${kind}:${roomId}:${userId}`;
+  const lastAt = earthquakeCooldown.get(cooldownKey) ?? 0;
+  const now = Date.now();
+  if (now - lastAt < EARTHQUAKE_COOLDOWN_MS) {
+    return "잠시 후 다시 시도해 주세요.";
+  }
+  earthquakeCooldown.set(cooldownKey, now);
+  return null;
+}
 
 /** 사용자별 활성 소켓 수 추적 (온라인/오프라인 판정용) */
 const onlineSockets = new Map<number, Set<string>>();
@@ -198,6 +222,66 @@ export function initSocket(httpServer: HttpServer, corsOrigin: string[]): IOServ
       }
       ack?.({ ok: true });
       void handleAiAsk(roomId, userId, trimmed, model);
+    });
+
+    socket.on("dm:earthquake", ({ roomId }, ack) => {
+      const room = getRoomById(roomId);
+      if (!room || room.type !== "dm") {
+        ack?.({ ok: false, error: "다이렉트 메시지에서만 사용할 수 있습니다." });
+        return;
+      }
+      if (!isMember(roomId, userId)) {
+        ack?.({ ok: false, error: "이 방의 참여자가 아닙니다." });
+        return;
+      }
+
+      const cooldownError = checkEarthquakeCooldown("dm", roomId, userId);
+      if (cooldownError) {
+        ack?.({ ok: false, error: cooldownError });
+        return;
+      }
+
+      const message = insertEarthquakeSystemMessage({ roomId, userId });
+      markRoomRead(roomId, userId, message.id);
+      broadcastMessage(message);
+      scheduleRoomConversationExport(roomId);
+
+      const peerId = getDmPeerId(roomId, userId);
+      if (peerId) {
+        emitEarthquakeShake([peerId], roomId);
+      }
+
+      logger.info("DM 지진", { roomId, userId, messageId: message.id });
+      ack?.({ ok: true, message });
+    });
+
+    socket.on("channel:mass-earthquake", ({ roomId }, ack) => {
+      const room = getRoomById(roomId);
+      if (!room || room.type !== "channel") {
+        ack?.({ ok: false, error: "채널에서만 사용할 수 있습니다." });
+        return;
+      }
+      if (!isMember(roomId, userId)) {
+        ack?.({ ok: false, error: "이 방의 참여자가 아닙니다." });
+        return;
+      }
+
+      const cooldownError = checkEarthquakeCooldown("mass", roomId, userId);
+      if (cooldownError) {
+        ack?.({ ok: false, error: cooldownError });
+        return;
+      }
+
+      const message = insertMassEarthquakeSystemMessage({ roomId, userId });
+      markRoomRead(roomId, userId, message.id);
+      broadcastMessage(message);
+      scheduleRoomConversationExport(roomId);
+
+      const targets = getActiveMemberIds(roomId, userId);
+      emitEarthquakeShake(targets, roomId);
+
+      logger.info("채널 전체지진", { roomId, userId, targetCount: targets.length, messageId: message.id });
+      ack?.({ ok: true, message });
     });
 
     socket.on("disconnect", () => handleDisconnect(socket, userId, username));

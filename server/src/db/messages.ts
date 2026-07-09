@@ -89,6 +89,44 @@ export function insertMemberSystemMessage(params: {
   return getMessageById(Number(result.lastInsertRowid))!;
 }
 
+/** DM /지진 시스템 메시지 */
+export function insertEarthquakeSystemMessage(params: {
+  roomId: number;
+  userId: number;
+}): Message {
+  const user = db.prepare("SELECT display_name FROM users WHERE id = ?").get(params.userId) as
+    | { display_name: string }
+    | undefined;
+  const displayName = user?.display_name ?? "알 수 없음";
+  const content = `[${displayName}]님이 지진을 발생시켰습니다.`;
+
+  const result = db
+    .prepare(
+      "INSERT INTO messages (room_id, sender_id, message_type, content) VALUES (?, ?, 'system', ?)"
+    )
+    .run(params.roomId, params.userId, content);
+  return getMessageById(Number(result.lastInsertRowid))!;
+}
+
+/** 채널 /전체지진 시스템 메시지 */
+export function insertMassEarthquakeSystemMessage(params: {
+  roomId: number;
+  userId: number;
+}): Message {
+  const user = db.prepare("SELECT display_name FROM users WHERE id = ?").get(params.userId) as
+    | { display_name: string }
+    | undefined;
+  const displayName = user?.display_name ?? "알 수 없음";
+  const content = `[${displayName}]님이 전체지진을 발동시켰습니다.`;
+
+  const result = db
+    .prepare(
+      "INSERT INTO messages (room_id, sender_id, message_type, content) VALUES (?, ?, 'system', ?)"
+    )
+    .run(params.roomId, params.userId, content);
+  return getMessageById(Number(result.lastInsertRowid))!;
+}
+
 export function insertTextMessage(params: {
   roomId: number;
   senderId: number;

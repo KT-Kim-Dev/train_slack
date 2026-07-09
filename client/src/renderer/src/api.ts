@@ -382,7 +382,7 @@ export function uploadFiles(
 ): Promise<{ messages: Message[] }> {
   return new Promise((resolve, reject) => {
     const form = new FormData();
-    for (const file of files) form.append("files", file);
+    for (const file of files) form.append("files", file, file.name);
 
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${SERVER_URL}/api/rooms/${roomId}/files`);

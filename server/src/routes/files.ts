@@ -1,5 +1,5 @@
-import path from "node:path";
 import fs from "node:fs";
+import { createReadStream } from "node:fs";
 import crypto from "node:crypto";
 import { Router } from "express";
 import multer from "multer";
@@ -16,6 +16,7 @@ import { broadcastMessage } from "../sockets/index.js";
 import { copyAiUploadToRag, scheduleRoomConversationExport } from "../services/rag-export.js";
 import { logger } from "../logger.js";
 import { decodeUploadFileName } from "../utils/filename.js";
+import { buildStoredFileName, resolveDownloadContentType } from "../utils/binary-file.js";
 
 export const filesRouter = Router();
 
@@ -52,8 +53,7 @@ const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, config.uploadDir),
   filename: (_req, file, cb) => {
     const unique = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}`;
-    const ext = path.extname(file.originalname);
-    cb(null, `${unique}${ext}`);
+    cb(null, buildStoredFileName(file.originalname, unique, file.mimetype));
   },
 });
 
@@ -103,6 +103,15 @@ function handleUploaded(req: AuthedRequest, res: import("express").Response, roo
   const senderId = req.auth!.userId;
   const room = getRoomById(roomId);
   const created = files.map((f) => {
+    const storedSize = fs.statSync(f.path).size;
+    if (storedSize !== f.size) {
+      logger.warn("업로드 파일 크기 불일치", {
+        roomId,
+        fileName: f.originalname,
+        reported: f.size,
+        stored: storedSize,
+      });
+    }
     const messageType = IMAGE_MIME.test(f.mimetype) ? "image" : "file";
     const message = insertFileMessage({
       roomId,
@@ -110,7 +119,7 @@ function handleUploaded(req: AuthedRequest, res: import("express").Response, roo
       messageType,
       fileName: decodeUploadFileName(f.originalname),
       filePath: f.path,
-      fileSize: f.size,
+      fileSize: storedSize,
     });
     broadcastMessage(message);
     return message;
@@ -144,10 +153,23 @@ filesRouter.get("/files/:id", allowTokenInQuery, (req: AuthedRequest, res) => {
     res.status(404).json({ error: "파일을 찾을 수 없습니다." });
     return;
   }
+
+  const stat = fs.statSync(meta.filePath);
   const disposition = meta.messageType === "image" ? "inline" : "attachment";
+  res.setHeader("Content-Type", resolveDownloadContentType(meta.fileName, meta.messageType));
+  res.setHeader("Content-Length", stat.size);
+  res.setHeader("Accept-Ranges", "bytes");
+  res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader(
     "Content-Disposition",
     `${disposition}; filename*=UTF-8''${encodeURIComponent(meta.fileName)}`
   );
-  res.sendFile(path.resolve(meta.filePath));
+
+  const stream = createReadStream(meta.filePath);
+  stream.on("error", (err) => {
+    logger.error("파일 스트리밍 오류", { messageId, error: err.message });
+    if (!res.headersSent) res.status(500).json({ error: "파일 전송 중 오류가 발생했습니다." });
+    else res.destroy();
+  });
+  stream.pipe(res);
 });

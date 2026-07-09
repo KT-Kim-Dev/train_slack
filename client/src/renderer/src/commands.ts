@@ -12,6 +12,8 @@ export type ParsedCommand =
   | { type: "build-status"; project: string }
   | { type: "calendar"; date: string }
   | { type: "rag-list" }
+  | { type: "earthquake" }
+  | { type: "mass-earthquake" }
   | { type: "error"; message: string };
 
 function pad2(n: number): string {
@@ -116,10 +118,24 @@ export function parseCommand(raw: string): ParsedCommand {
       if (argStr) return { type: "error", message: "사용법: /rag (RAG 폴더 파일 목록 조회)" };
       return { type: "rag-list" };
 
+    case "지진":
+      if (argStr) return { type: "error", message: "사용법: /지진" };
+      return { type: "earthquake" };
+
+    case "전체지진":
+      if (argStr) return { type: "error", message: "사용법: /전체지진" };
+      return { type: "mass-earthquake" };
+
     default:
       return { type: "error", message: `알 수 없는 명령어입니다: /${cmd}` };
   }
 }
+
+/** DM 입력창 안내 */
+export const DM_COMMAND_HINTS = ["/지진"];
+
+/** 채널 입력창 안내 */
+export const CHANNEL_COMMAND_HINTS = ["/전체지진"];
 
 /** AI 어시스턴트 방 입력창 안내 */
 export const AI_COMMAND_HINTS = ["/rag"];

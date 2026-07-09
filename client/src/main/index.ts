@@ -63,7 +63,61 @@ function showMainWindow(): void {
   if (!mainWindow) return;
   if (!mainWindow.isVisible()) mainWindow.show();
   if (mainWindow.isMinimized()) mainWindow.restore();
+  if (process.platform === "win32") mainWindow.setSkipTaskbar(false);
+  if (process.platform === "darwin") app.dock?.show();
   mainWindow.focus();
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+let shakingWindow = false;
+
+/** 트레이/최소화 상태에서도 최상단으로 올린 뒤 좌우·상하로 창을 흔든다 */
+async function shakeWindow(win: BrowserWindow): Promise<void> {
+  if (shakingWindow) return;
+  shakingWindow = true;
+  try {
+    if (!win.isVisible()) win.show();
+    if (win.isMinimized()) win.restore();
+    if (process.platform === "win32") win.setSkipTaskbar(false);
+    if (process.platform === "darwin") app.dock?.show();
+
+    const wasAlwaysOnTop = win.isAlwaysOnTop();
+    win.setAlwaysOnTop(true, "screen-saver");
+    win.focus();
+
+    const base = win.getBounds();
+    const origin = { x: base.x, y: base.y, width: base.width, height: base.height };
+    const frames = [
+      { dx: 14, dy: 10 },
+      { dx: -14, dy: -10 },
+      { dx: 12, dy: -12 },
+      { dx: -12, dy: 12 },
+      { dx: 10, dy: 8 },
+      { dx: -10, dy: -8 },
+      { dx: 8, dy: -6 },
+      { dx: -8, dy: 6 },
+      { dx: 0, dy: 0 },
+    ];
+
+    for (const frame of frames) {
+      win.setBounds({
+        x: origin.x + frame.dx,
+        y: origin.y + frame.dy,
+        width: origin.width,
+        height: origin.height,
+      });
+      await delay(45);
+    }
+
+    win.setBounds(origin);
+    win.setAlwaysOnTop(wasAlwaysOnTop);
+    win.focus();
+  } finally {
+    shakingWindow = false;
+  }
 }
 
 function createTray(): void {
@@ -188,7 +242,52 @@ ipcMain.handle(
       defaultPath: payload.fileName,
     });
     if (canceled || !filePath) return null;
-    await writeFile(filePath, Buffer.from(payload.data));
+    const buffer = Buffer.from(new Uint8Array(payload.data));
+    await writeFile(filePath, buffer);
+    return filePath;
+  }
+);
+
+/** 채팅 첨부파일 다운로드 — 바이너리 무결성 검증 후 저장 */
+ipcMain.handle(
+  "file:download",
+  async (
+    _event,
+    payload: { url: string; fileName: string; expectedSize?: number | null }
+  ): Promise<string | null> => {
+    const res = await fetch(payload.url);
+    if (!res.ok) {
+      let detail = `다운로드 실패 (${res.status})`;
+      try {
+        const body = (await res.json()) as { error?: string };
+        if (body?.error) detail = body.error;
+      } catch {
+        /* 바이너리 응답 등 */
+      }
+      throw new Error(detail);
+    }
+
+    const arrayBuffer = await res.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    const contentLength = res.headers.get("content-length");
+    if (contentLength) {
+      const expected = Number(contentLength);
+      if (Number.isFinite(expected) && expected !== buffer.length) {
+        throw new Error("다운로드가 완전하지 않습니다. 파일 크기가 일치하지 않습니다.");
+      }
+    }
+    if (payload.expectedSize != null && payload.expectedSize !== buffer.length) {
+      throw new Error(
+        `파일 크기가 일치하지 않습니다 (예상 ${payload.expectedSize}, 실제 ${buffer.length}).`
+      );
+    }
+
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      defaultPath: payload.fileName,
+    });
+    if (canceled || !filePath) return null;
+    await writeFile(filePath, buffer);
     return filePath;
   }
 );
@@ -215,6 +314,17 @@ ipcMain.handle(
   ): void => {
     const win = BrowserWindow.fromWebContents(event.sender) ?? mainWindow;
     handleBackgroundNotification(win, payload);
+  }
+);
+
+/** DM /지진 — 창 복원 + 흔들림 후 해당 DM으로 이동 */
+ipcMain.handle(
+  "window:earthquake",
+  async (event, payload: { roomId: number }): Promise<void> => {
+    const win = BrowserWindow.fromWebContents(event.sender) ?? mainWindow;
+    if (!win) return;
+    await shakeWindow(win);
+    win.webContents.send("notification:navigate", { type: "room", roomId: payload.roomId });
   }
 );
 

@@ -45,6 +45,26 @@ export function sendMessage(roomId: number, content: string): Promise<Message> {
   });
 }
 
+export function sendEarthquake(roomId: number): Promise<Message> {
+  return new Promise((resolve, reject) => {
+    if (!socket) return reject(new Error("소켓이 연결되지 않았습니다."));
+    socket.emit("dm:earthquake", { roomId }, (result) => {
+      if (result.ok && result.message) resolve(result.message);
+      else reject(new Error(result.error ?? "지진 명령 전송에 실패했습니다."));
+    });
+  });
+}
+
+export function sendMassEarthquake(roomId: number): Promise<Message> {
+  return new Promise((resolve, reject) => {
+    if (!socket) return reject(new Error("소켓이 연결되지 않았습니다."));
+    socket.emit("channel:mass-earthquake", { roomId }, (result) => {
+      if (result.ok && result.message) resolve(result.message);
+      else reject(new Error(result.error ?? "전체지진 명령 전송에 실패했습니다."));
+    });
+  });
+}
+
 export function joinRoom(roomId: number): void {
   socket?.emit("room:join", roomId);
 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from "react";
 import { uploadFiles } from "../api";
-import { AI_COMMAND_HINTS, COMMAND_HINTS } from "../commands";
+import { AI_COMMAND_HINTS, CHANNEL_COMMAND_HINTS, COMMAND_HINTS, DM_COMMAND_HINTS } from "../commands";
 
 const TEXTAREA_MAX_HEIGHT = 320;
 const TEXTAREA_MIN_HEIGHT = 36;
@@ -8,10 +8,18 @@ const TEXTAREA_MIN_HEIGHT = 36;
 interface Props {
   roomId: number;
   isAiRoom: boolean;
+  isDmRoom?: boolean;
+  isChannelRoom?: boolean;
   onSubmit: (raw: string) => Promise<void>;
 }
 
-export function MessageInput({ roomId, isAiRoom, onSubmit }: Props): JSX.Element {
+export function MessageInput({
+  roomId,
+  isAiRoom,
+  isDmRoom = false,
+  isChannelRoom = false,
+  onSubmit,
+}: Props): JSX.Element {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -157,6 +165,14 @@ export function MessageInput({ roomId, isAiRoom, onSubmit }: Props): JSX.Element
       </div>
       {isAiRoom ? (
         <div className="command-hints">명령어: {AI_COMMAND_HINTS.join("  ·  ")}</div>
+      ) : isDmRoom ? (
+        <div className="command-hints">
+          명령어: {DM_COMMAND_HINTS.join("  ·  ")}  ·  {COMMAND_HINTS.join("  ·  ")}
+        </div>
+      ) : isChannelRoom ? (
+        <div className="command-hints">
+          명령어: {CHANNEL_COMMAND_HINTS.join("  ·  ")}  ·  {COMMAND_HINTS.join("  ·  ")}
+        </div>
       ) : (
         <div className="command-hints">명령어: {COMMAND_HINTS.join("  ·  ")}</div>
       )}

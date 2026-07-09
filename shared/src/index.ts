@@ -329,6 +329,8 @@ export interface ServerToClientEvents {
   "room:unhidden": (room: Room) => void;
   "ai:delta": (payload: AiDeltaEvent) => void;
   "calendar:event": (payload: CalendarEventSocketPayload) => void;
+  /** DM /지진 — 상대방 창 흔들림 */
+  "room:earthquake:shake": (payload: { roomId: number }) => void;
   "error": (payload: { message: string }) => void;
 }
 
@@ -344,6 +346,16 @@ export interface ClientToServerEvents {
   "ai:ask": (
     payload: { roomId: number; content: string; model?: string },
     ack?: (result: { ok: boolean; error?: string }) => void
+  ) => void;
+  /** DM /지진 — 상대방에게 창 흔들림 + 시스템 메시지 */
+  "dm:earthquake": (
+    payload: { roomId: number },
+    ack?: (result: { ok: boolean; message?: Message; error?: string }) => void
+  ) => void;
+  /** 채널 /전체지진 — 발신자 제외 참여자 창 흔들림 + 시스템 메시지 */
+  "channel:mass-earthquake": (
+    payload: { roomId: number },
+    ack?: (result: { ok: boolean; message?: Message; error?: string }) => void
   ) => void;
 }
 

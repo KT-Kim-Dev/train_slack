@@ -6,6 +6,7 @@ import { getMessagesForRagExport } from "../db/messages.js";
 import { getRoomById } from "../db/rooms.js";
 import { getSettings } from "../db/settings.js";
 import { logger } from "../logger.js";
+import { copyBinaryFile, sanitizeRagFileName } from "../utils/binary-file.js";
 import { invalidateRagSnapshotEntry, syncSharedFolder } from "./rag.js";
 
 const AI_UPLOADS_DIR = "ai-uploads";
@@ -17,7 +18,7 @@ const roomExportTimers = new Map<number, ReturnType<typeof setTimeout>>();
 let syncTimer: ReturnType<typeof setTimeout> | null = null;
 
 function sanitizeFileSegment(name: string): string {
-  return name.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").replace(/\s+/g, " ").trim().slice(0, 60);
+  return sanitizeRagFileName(name, 60);
 }
 
 async function ensureRagDirs(): Promise<void> {
@@ -95,7 +96,7 @@ export async function copyAiUploadToRag(sourcePath: string, fileName: string): P
   const relativePath = `${AI_UPLOADS_DIR}/${destName}`;
   const destPath = path.join(config.ragDocumentFolder, relativePath);
 
-  await fs.copyFile(sourcePath, destPath);
+  await copyBinaryFile(sourcePath, destPath, fs);
   invalidateRagSnapshotEntry(relativePath);
   queueBackgroundSync();
 

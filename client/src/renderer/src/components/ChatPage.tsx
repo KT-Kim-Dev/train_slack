@@ -137,6 +137,10 @@ export function ChatPage({ currentUser, onLogout, onUserUpdated }: Props): JSX.E
       notifyCalendarEvent(payload.action, payload.event);
     });
 
+    socket.on("room:earthquake:shake", ({ roomId }) => {
+      void window.intraChat?.earthquakeShake?.({ roomId });
+    });
+
     socket.on("presence:update", ({ userId, isOnline, lastSeen, presenceStatus }) => {
       setUsers((prev) =>
         prev.map((u) =>

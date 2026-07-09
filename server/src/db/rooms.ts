@@ -67,6 +67,27 @@ export function getMemberIds(roomId: number): number[] {
   return rows.map((r) => r.user_id);
 }
 
+/** DM 상대방 user id (본인 제외) */
+export function getDmPeerId(roomId: number, userId: number): number | null {
+  const room = getRoomById(roomId);
+  if (!room || room.type !== "dm") return null;
+  const peer = getMemberIds(roomId).find((id) => id !== userId);
+  return peer ?? null;
+}
+
+/** 방 참여자 중 활성 계정 user id (선택적으로 특정 사용자 제외) */
+export function getActiveMemberIds(roomId: number, excludeUserId?: number): number[] {
+  const rows = db
+    .prepare(
+      `SELECT rm.user_id AS user_id
+       FROM room_members rm
+       INNER JOIN users u ON u.id = rm.user_id AND u.is_active = 1
+       WHERE rm.room_id = ?`
+    )
+    .all(roomId) as { user_id: number }[];
+  return rows.map((r) => r.user_id).filter((id) => id !== excludeUserId);
+}
+
 /**
  * 사용자가 참여 중인 방 목록을 미읽음 수와 함께 반환한다.
  * 미읽음 수 = 해당 방에서 last_read_message_id 이후 & 본인이 보내지 않은 메시지 수.

@@ -45,15 +45,31 @@ export function MessageItem({
   onImageClick,
 }: Props): JSX.Element {
   const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const url = message.fileUrl ? fileUrl(message.fileUrl) : null;
 
   async function handleDownload(): Promise<void> {
     if (!url || !message.fileName) return;
     setDownloading(true);
+    setDownloadError(null);
     try {
+      if (window.intraChat?.downloadFile) {
+        await window.intraChat.downloadFile({
+          url,
+          fileName: message.fileName,
+          expectedSize: message.fileSize,
+        });
+        return;
+      }
       const res = await fetch(url);
+      if (!res.ok) throw new Error(`다운로드 실패 (${res.status})`);
       const buffer = await res.arrayBuffer();
+      if (message.fileSize != null && buffer.byteLength !== message.fileSize) {
+        throw new Error("다운로드된 파일 크기가 원본과 일치하지 않습니다.");
+      }
       await window.intraChat.saveFile(message.fileName, buffer);
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : "다운로드 실패");
     } finally {
       setDownloading(false);
     }
@@ -152,15 +168,19 @@ export function MessageItem({
         )}
 
         {message.messageType === "file" && (
-          <button className="message-file" onClick={handleDownload} disabled={downloading}>
-            <span className="file-icon">📄</span>
-            <span className="file-info">
-              <span className="file-name">{message.fileName}</span>
-              <span className="file-size">
-                {formatSize(message.fileSize)} {downloading ? "· 저장 중..." : "· 클릭하여 다운로드"}
+          <>
+            <button className="message-file" onClick={handleDownload} disabled={downloading}>
+              <span className="file-icon">📄</span>
+              <span className="file-info">
+                <span className="file-name">{message.fileName}</span>
+                <span className="file-size">
+                  {formatSize(message.fileSize)}{" "}
+                  {downloading ? "· 저장 중..." : "· 클릭하여 다운로드"}
+                </span>
               </span>
-            </span>
-          </button>
+            </button>
+            {downloadError && <div className="file-download-error">{downloadError}</div>}
+          </>
         )}
       </div>
     </div>
