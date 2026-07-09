@@ -3,8 +3,11 @@
  * 외부 Slack Slash Command 를 쓰지 않고 자체 클라이언트 내 명령어로 처리한다.
  */
 
+import type { PublicUser, RoomType } from "@intra-chat/shared";
+import { extractLeadingMentions } from "./utils/mentions";
+
 export type ParsedCommand =
-  | { type: "text"; text: string }
+  | { type: "text"; text: string; mentionUserIds?: number[] }
   | { type: "ai"; text: string }
   | { type: "issue-view"; issueId: string }
   | { type: "issue-create" }
@@ -14,7 +17,10 @@ export type ParsedCommand =
   | { type: "rag-list" }
   | { type: "earthquake" }
   | { type: "mass-earthquake" }
+  | { type: "targeted-earthquake"; targetUserIds: number[] }
   | { type: "error"; message: string };
+
+export type ParsedInput = ParsedCommand;
 
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
@@ -71,6 +77,54 @@ export function localDayRangeIso(ymd: string): { from: string; to: string } {
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
   return { from: start.toISOString(), to: end.toISOString() };
+}
+
+/**
+ * @멘션 + 명령어/일반 메시지 파싱.
+ * @김경태 /지진 → targeted-earthquake, @김경태 안녕 → mention text
+ */
+export function parseMessageInput(
+  raw: string,
+  mentionCandidates: PublicUser[],
+  roomType: RoomType
+): ParsedInput {
+  const { mentions, rest } = extractLeadingMentions(raw, mentionCandidates);
+
+  if (rest === "/지진") {
+    if (mentions.length > 0) {
+      return { type: "targeted-earthquake", targetUserIds: mentions.map((m) => m.id) };
+    }
+    if (roomType === "dm") return { type: "earthquake" };
+    if (roomType === "group") return { type: "mass-earthquake" };
+    if (roomType === "channel") {
+      return { type: "error", message: "채널에서는 /전체지진 또는 @사용자 /지진 을 사용하세요." };
+    }
+    return { type: "error", message: "이 방에서는 /지진을 사용할 수 없습니다." };
+  }
+
+  if (rest === "/전체지진") {
+    if (mentions.length > 0) {
+      return { type: "error", message: "전체지진과 @멘션을 함께 사용할 수 없습니다." };
+    }
+    if (roomType === "channel" || roomType === "group") {
+      return { type: "mass-earthquake" };
+    }
+    return { type: "error", message: "채널 또는 그룹채팅에서만 사용할 수 있습니다." };
+  }
+
+  if (mentions.length > 0 && !rest.startsWith("/")) {
+    return {
+      type: "text",
+      text: raw.trim(),
+      mentionUserIds: mentions.map((m) => m.id),
+    };
+  }
+
+  if (mentions.length > 0) {
+    return { type: "error", message: "@멘션 뒤에는 /지진 또는 일반 메시지만 입력할 수 있습니다." };
+  }
+
+  return parseCommand(raw);
 }
 
 export function parseCommand(raw: string): ParsedCommand {
@@ -132,10 +186,13 @@ export function parseCommand(raw: string): ParsedCommand {
 }
 
 /** DM 입력창 안내 */
-export const DM_COMMAND_HINTS = ["/지진"];
+export const DM_COMMAND_HINTS = ["/지진", "@사용자"];
+
+/** 그룹채팅 입력창 안내 */
+export const GROUP_COMMAND_HINTS = ["/지진", "/전체지진", "@사용자 /지진"];
 
 /** 채널 입력창 안내 */
-export const CHANNEL_COMMAND_HINTS = ["/전체지진"];
+export const CHANNEL_COMMAND_HINTS = ["/전체지진", "@사용자 /지진"];
 
 /** AI 어시스턴트 방 입력창 안내 */
 export const AI_COMMAND_HINTS = ["/rag"];
@@ -146,8 +203,4 @@ export const COMMAND_HINTS = [
   "@ai (질문)",
   "/일정 [오늘|날짜]",
   "/calendar [오늘|날짜]",
-  "/issue (번호)",
-  "/issue create",
-  "/build (프로젝트)",
-  "/build status (프로젝트)",
 ];

@@ -331,6 +331,8 @@ export interface ServerToClientEvents {
   "calendar:event": (payload: CalendarEventSocketPayload) => void;
   /** DM /지진 — 상대방 창 흔들림 */
   "room:earthquake:shake": (payload: { roomId: number }) => void;
+  /** @멘션 알림 */
+  "mention:notify": (payload: { roomId: number; message: Message; fromUserId: number }) => void;
   "error": (payload: { message: string }) => void;
 }
 
@@ -339,7 +341,7 @@ export interface ClientToServerEvents {
   "room:join": (roomId: number, ack?: (ok: boolean) => void) => void;
   "room:leave": (roomId: number) => void;
   "message:send": (
-    payload: { roomId: number; content: string },
+    payload: { roomId: number; content: string; mentionUserIds?: number[] },
     ack?: (result: { ok: boolean; message?: Message; error?: string }) => void
   ) => void;
   /** AI 질문 요청 (FR-28, FR-29): 서버가 질문을 저장/브로드캐스트 후 스트리밍 응답 */
@@ -352,9 +354,14 @@ export interface ClientToServerEvents {
     payload: { roomId: number },
     ack?: (result: { ok: boolean; message?: Message; error?: string }) => void
   ) => void;
-  /** 채널 /전체지진 — 발신자 제외 참여자 창 흔들림 + 시스템 메시지 */
-  "channel:mass-earthquake": (
+  /** 채널·그룹 /전체지진 — 발신자 제외 참여자 창 흔들림 + 시스템 메시지 */
+  "room:mass-earthquake": (
     payload: { roomId: number },
+    ack?: (result: { ok: boolean; message?: Message; error?: string }) => void
+  ) => void;
+  /** @멘션 대상 개별 /지진 */
+  "room:targeted-earthquake": (
+    payload: { roomId: number; targetUserIds: number[] },
     ack?: (result: { ok: boolean; message?: Message; error?: string }) => void
   ) => void;
 }

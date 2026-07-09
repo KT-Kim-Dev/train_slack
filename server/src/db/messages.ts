@@ -127,6 +127,37 @@ export function insertMassEarthquakeSystemMessage(params: {
   return getMessageById(Number(result.lastInsertRowid))!;
 }
 
+/** @멘션 대상 개별 /지진 시스템 메시지 */
+export function insertTargetedEarthquakeSystemMessage(params: {
+  roomId: number;
+  userId: number;
+  targetUserIds: number[];
+}): Message {
+  const sender = db.prepare("SELECT display_name FROM users WHERE id = ?").get(params.userId) as
+    | { display_name: string }
+    | undefined;
+  const senderName = sender?.display_name ?? "알 수 없음";
+
+  const targetNames = params.targetUserIds.map((id) => {
+    const row = db.prepare("SELECT display_name FROM users WHERE id = ?").get(id) as
+      | { display_name: string }
+      | undefined;
+    return row?.display_name ?? "알 수 없음";
+  });
+
+  const content =
+    targetNames.length === 1
+      ? `[${senderName}]님이 [${targetNames[0]}]님에게 지진을 발생시켰습니다.`
+      : `[${senderName}]님이 [${targetNames.join(", ")}]님에게 지진을 발생시켰습니다.`;
+
+  const result = db
+    .prepare(
+      "INSERT INTO messages (room_id, sender_id, message_type, content) VALUES (?, ?, 'system', ?)"
+    )
+    .run(params.roomId, params.userId, content);
+  return getMessageById(Number(result.lastInsertRowid))!;
+}
+
 export function insertTextMessage(params: {
   roomId: number;
   senderId: number;

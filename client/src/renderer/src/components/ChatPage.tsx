@@ -141,6 +141,18 @@ export function ChatPage({ currentUser, onLogout, onUserUpdated }: Props): JSX.E
       void window.intraChat?.earthquakeShake?.({ roomId });
     });
 
+    socket.on("mention:notify", ({ roomId, message, fromUserId }) => {
+      if (fromUserId === currentUserIdRef.current) return;
+      const room = roomsRef.current.find((r) => r.id === roomId);
+      if (!room) return;
+      const label = roomNotificationLabel(room, usersRef.current, currentUserIdRef.current);
+      notifyIncomingMessage({
+        room,
+        message: { ...message, content: message.content ?? `@멘션: ${message.content ?? ""}` },
+        roomLabel: label,
+      });
+    });
+
     socket.on("presence:update", ({ userId, isOnline, lastSeen, presenceStatus }) => {
       setUsers((prev) =>
         prev.map((u) =>

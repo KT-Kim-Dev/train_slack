@@ -16,6 +16,7 @@ import {
   insertAiPlaceholder,
   insertEarthquakeSystemMessage,
   insertMassEarthquakeSystemMessage,
+  insertTargetedEarthquakeSystemMessage,
   insertTextMessage,
   setMessageContent,
 } from "../db/messages.js";
@@ -192,7 +193,7 @@ export function initSocket(httpServer: HttpServer, corsOrigin: string[]): IOServ
       socket.leave(roomChannel(roomId));
     });
 
-    socket.on("message:send", ({ roomId, content }, ack) => {
+    socket.on("message:send", ({ roomId, content, mentionUserIds }, ack) => {
       const trimmed = (content ?? "").trim();
       if (!trimmed) {
         ack?.({ ok: false, error: "빈 메시지는 보낼 수 없습니다." });
@@ -206,6 +207,17 @@ export function initSocket(httpServer: HttpServer, corsOrigin: string[]): IOServ
       markRoomRead(roomId, userId, message.id);
       broadcastMessage(message);
       scheduleRoomConversationExport(roomId);
+
+      const memberSet = new Set(getActiveMemberIds(roomId));
+      for (const targetId of mentionUserIds ?? []) {
+        if (targetId === userId || !memberSet.has(targetId)) continue;
+        getIo().to(userChannel(targetId)).emit("mention:notify", {
+          roomId,
+          message,
+          fromUserId: userId,
+        });
+      }
+
       logger.info("메시지 전송", { roomId, userId, messageId: message.id });
       ack?.({ ok: true, message });
     });
@@ -255,10 +267,10 @@ export function initSocket(httpServer: HttpServer, corsOrigin: string[]): IOServ
       ack?.({ ok: true, message });
     });
 
-    socket.on("channel:mass-earthquake", ({ roomId }, ack) => {
+    socket.on("room:mass-earthquake", ({ roomId }, ack) => {
       const room = getRoomById(roomId);
-      if (!room || room.type !== "channel") {
-        ack?.({ ok: false, error: "채널에서만 사용할 수 있습니다." });
+      if (!room || (room.type !== "channel" && room.type !== "group")) {
+        ack?.({ ok: false, error: "채널 또는 그룹채팅에서만 사용할 수 있습니다." });
         return;
       }
       if (!isMember(roomId, userId)) {
@@ -280,7 +292,51 @@ export function initSocket(httpServer: HttpServer, corsOrigin: string[]): IOServ
       const targets = getActiveMemberIds(roomId, userId);
       emitEarthquakeShake(targets, roomId);
 
-      logger.info("채널 전체지진", { roomId, userId, targetCount: targets.length, messageId: message.id });
+      logger.info("전체지진", { roomId, roomType: room.type, userId, targetCount: targets.length, messageId: message.id });
+      ack?.({ ok: true, message });
+    });
+
+    socket.on("room:targeted-earthquake", ({ roomId, targetUserIds }, ack) => {
+      const room = getRoomById(roomId);
+      if (!room || room.type === "ai") {
+        ack?.({ ok: false, error: "이 방에서는 사용할 수 없습니다." });
+        return;
+      }
+      if (!isMember(roomId, userId)) {
+        ack?.({ ok: false, error: "이 방의 참여자가 아닙니다." });
+        return;
+      }
+
+      const uniqueTargets = [...new Set(targetUserIds ?? [])].filter((id) => id !== userId);
+      if (uniqueTargets.length === 0) {
+        ack?.({ ok: false, error: "지진 대상 사용자를 @멘션으로 지정해 주세요." });
+        return;
+      }
+
+      const memberSet = new Set(getActiveMemberIds(roomId));
+      const validTargets = uniqueTargets.filter((id) => memberSet.has(id));
+      if (validTargets.length === 0) {
+        ack?.({ ok: false, error: "멘션한 사용자가 이 방의 참여자가 아닙니다." });
+        return;
+      }
+
+      const cooldownError = checkEarthquakeCooldown("target", roomId, userId);
+      if (cooldownError) {
+        ack?.({ ok: false, error: cooldownError });
+        return;
+      }
+
+      const message = insertTargetedEarthquakeSystemMessage({
+        roomId,
+        userId,
+        targetUserIds: validTargets,
+      });
+      markRoomRead(roomId, userId, message.id);
+      broadcastMessage(message);
+      scheduleRoomConversationExport(roomId);
+      emitEarthquakeShake(validTargets, roomId);
+
+      logger.info("개별 지진", { roomId, userId, targetCount: validTargets.length, messageId: message.id });
       ack?.({ ok: true, message });
     });
 

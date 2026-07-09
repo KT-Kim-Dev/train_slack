@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AiDeltaEvent, IntegrationsInfo, Message, PublicUser, Room } from "@intra-chat/shared";
-import { fetchBuildStatus, fetchIntegrations, fetchIssue, fetchMessages, fetchRagFileList, fetchScheduleForRoom, markRoomRead } from "../api";
-import { askAi, sendEarthquake, sendMassEarthquake, sendMessage } from "../socket";
-import { localDayRangeIso, parseCommand } from "../commands";
+import { fetchBuildStatus, fetchIntegrations, fetchIssue, fetchMessages, fetchRagFileList, fetchRoomMembers, fetchScheduleForRoom, markRoomRead } from "../api";
+import { askAi, sendEarthquake, sendMassEarthquake, sendMessage, sendTargetedEarthquake } from "../socket";
+import { localDayRangeIso, parseMessageInput } from "../commands";
 import { buildAiFlowMap } from "../utils/aiMessageFlow";
 import { MessageItem } from "./MessageItem";
 import { MessageInput } from "./MessageInput";
@@ -36,6 +36,7 @@ export function ChatRoom({ room, currentUser, users, integrations, registerActiv
 
   const [showGroupMembers, setShowGroupMembers] = useState(false);
   const [groupMembersAddMode, setGroupMembersAddMode] = useState(false);
+  const [mentionUsers, setMentionUsers] = useState<PublicUser[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const nearBottomRef = useRef(true);
 
@@ -91,6 +92,30 @@ export function ChatRoom({ room, currentUser, users, integrations, registerActiv
   }, [room.id]);
 
   useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (room.type === "ai") {
+        setMentionUsers([]);
+        return;
+      }
+      if (room.type === "dm") {
+        const others = users.filter((u) => u.id !== currentUser.id);
+        if (!cancelled) setMentionUsers(others);
+        return;
+      }
+      try {
+        const members = await fetchRoomMembers(room.id);
+        if (!cancelled) setMentionUsers(members.filter((u) => u.id !== currentUser.id));
+      } catch {
+        if (!cancelled) setMentionUsers(users.filter((u) => u.id !== currentUser.id));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [room.id, room.type, users, currentUser.id]);
+
+  useEffect(() => {
     if (nearBottomRef.current) scrollToBottom("smooth");
   }, [messages]);
 
@@ -128,7 +153,7 @@ export function ChatRoom({ room, currentUser, users, integrations, registerActiv
    */
   async function handleSubmit(raw: string): Promise<void> {
     nearBottomRef.current = true;
-    const parsed = parseCommand(raw);
+    const parsed = parseMessageInput(raw, mentionUsers, room.type);
 
     // AI 전용 채팅방에서는 일반 텍스트도 AI 질문으로 처리
     if (parsed.type === "text" && room.type === "ai") {
@@ -139,7 +164,7 @@ export function ChatRoom({ room, currentUser, users, integrations, registerActiv
 
     switch (parsed.type) {
       case "text":
-        await sendMessage(room.id, parsed.text);
+        await sendMessage(room.id, parsed.text, parsed.mentionUserIds);
         return;
       case "ai":
         await ensureAiEnabled();
@@ -182,10 +207,13 @@ export function ChatRoom({ room, currentUser, users, integrations, registerActiv
         await sendEarthquake(room.id);
         return;
       case "mass-earthquake":
-        if (room.type !== "channel") {
-          throw new Error("채널에서만 사용할 수 있습니다.");
+        if (room.type !== "channel" && room.type !== "group") {
+          throw new Error("채널 또는 그룹채팅에서만 사용할 수 있습니다.");
         }
         await sendMassEarthquake(room.id);
+        return;
+      case "targeted-earthquake":
+        await sendTargetedEarthquake(room.id, parsed.targetUserIds);
         return;
       case "error":
         throw new Error(parsed.message);
@@ -284,6 +312,8 @@ export function ChatRoom({ room, currentUser, users, integrations, registerActiv
         isAiRoom={room.type === "ai"}
         isDmRoom={room.type === "dm"}
         isChannelRoom={room.type === "channel"}
+        isGroupRoom={room.type === "group"}
+        mentionUsers={mentionUsers}
         onSubmit={handleSubmit}
       />
 
