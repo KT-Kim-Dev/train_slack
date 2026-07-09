@@ -11,7 +11,7 @@ import {
 import { detectMentionQuery, filterMentionCandidates } from "../utils/mentions";
 
 const TEXTAREA_MAX_HEIGHT = 320;
-const TEXTAREA_MIN_HEIGHT = 36;
+const TEXTAREA_MIN_HEIGHT = 44;
 
 interface Props {
   roomId: number;
@@ -55,6 +55,7 @@ export function MessageInput({
     el.style.height = "auto";
     const next = Math.max(TEXTAREA_MIN_HEIGHT, Math.min(el.scrollHeight, TEXTAREA_MAX_HEIGHT));
     el.style.height = `${next}px`;
+    el.style.overflowY = el.scrollHeight > TEXTAREA_MAX_HEIGHT ? "auto" : "hidden";
   }, [text]);
 
   function updateMentionState(nextText: string, cursor: number): void {
