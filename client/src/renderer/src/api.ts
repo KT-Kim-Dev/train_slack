@@ -356,6 +356,15 @@ export async function fetchScheduleForRoom(params: {
   return request<ScheduleCard>(`/api/calendar/schedule?${q.toString()}`);
 }
 
+/** /rag 명령 — RAG 폴더 파일 목록을 채팅방에 게시 */
+export async function fetchRagFileList(roomId: number): Promise<Message> {
+  const q = new URLSearchParams({ roomId: String(roomId) });
+  const res = await request<{ message: Message; files: unknown[] }>(
+    `/api/integrations/rag/files?${q.toString()}`
+  );
+  return res.message;
+}
+
 /** 파일 다운로드/미리보기용 URL (쿼리 토큰 포함) */
 export function fileUrl(relativeUrl: string): string {
   const token = getToken();

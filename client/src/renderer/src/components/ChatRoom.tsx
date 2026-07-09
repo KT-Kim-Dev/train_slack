@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AiDeltaEvent, IntegrationsInfo, Message, PublicUser, Room } from "@intra-chat/shared";
-import { fetchBuildStatus, fetchIntegrations, fetchIssue, fetchMessages, fetchScheduleForRoom, markRoomRead } from "../api";
+import { fetchBuildStatus, fetchIntegrations, fetchIssue, fetchMessages, fetchRagFileList, fetchScheduleForRoom, markRoomRead } from "../api";
 import { askAi, sendMessage } from "../socket";
 import { localDayRangeIso, parseCommand } from "../commands";
 import { buildAiFlowMap } from "../utils/aiMessageFlow";
@@ -168,6 +168,9 @@ export function ChatRoom({ room, currentUser, users, integrations, registerActiv
         });
         return;
       }
+      case "rag-list":
+        await fetchRagFileList(room.id);
+        return;
       case "error":
         throw new Error(parsed.message);
     }

@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS messages (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   room_id      INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
   sender_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE SET NULL,
-  message_type TEXT NOT NULL DEFAULT 'text' CHECK (message_type IN ('text','file','image','ai_response','card')),
+  message_type TEXT NOT NULL DEFAULT 'text' CHECK (message_type IN ('text','file','image','ai_response','card','system')),
   content      TEXT,
   file_name    TEXT,
   file_path    TEXT,
@@ -209,7 +209,7 @@ function runMigrations(): void {
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
         room_id      INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
         sender_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE SET NULL,
-        message_type TEXT NOT NULL DEFAULT 'text' CHECK (message_type IN ('text','file','image','ai_response','card')),
+        message_type TEXT NOT NULL DEFAULT 'text' CHECK (message_type IN ('text','file','image','ai_response','card','system')),
         content      TEXT,
         file_name    TEXT,
         file_path    TEXT,
@@ -221,6 +221,39 @@ function runMigrations(): void {
         SELECT id, room_id, sender_id, message_type, content, file_name, file_path, file_size, created_at FROM messages;
       DROP TABLE messages;
       ALTER TABLE messages_v3 RENAME TO messages;
+      CREATE INDEX IF NOT EXISTS idx_messages_room_created ON messages (room_id, created_at);
+      COMMIT;
+      PRAGMA foreign_keys = ON;
+    `);
+  }
+
+  // ----- messages: message_type CHECK 에 'system' 추가 (그룹 입·퇴장 알림) -----
+  const msgDefLatest: string = (
+    db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='messages'").get() as
+      | { sql: string }
+      | undefined
+  )?.sql ?? "";
+  if (msgDefLatest && !msgDefLatest.includes("'system'")) {
+    logger.info("DB 마이그레이션: messages.message_type 에 system 추가");
+    db.exec(`
+      PRAGMA foreign_keys = OFF;
+      BEGIN;
+      CREATE TABLE messages_system (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        room_id      INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+        sender_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE SET NULL,
+        message_type TEXT NOT NULL DEFAULT 'text' CHECK (message_type IN ('text','file','image','ai_response','card','system')),
+        content      TEXT,
+        file_name    TEXT,
+        file_path    TEXT,
+        file_size    INTEGER,
+        metadata     TEXT,
+        created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      );
+      INSERT INTO messages_system (id, room_id, sender_id, message_type, content, file_name, file_path, file_size, metadata, created_at)
+        SELECT id, room_id, sender_id, message_type, content, file_name, file_path, file_size, metadata, created_at FROM messages;
+      DROP TABLE messages;
+      ALTER TABLE messages_system RENAME TO messages;
       CREATE INDEX IF NOT EXISTS idx_messages_room_created ON messages (room_id, created_at);
       COMMIT;
       PRAGMA foreign_keys = ON;

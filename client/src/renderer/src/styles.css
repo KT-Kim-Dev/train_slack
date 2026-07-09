@@ -30,6 +30,37 @@ body {
   font-size: 14px;
 }
 
+/* ---------- 스크롤바 (슬림·다크 테마) ---------- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 .center-screen {
   display: flex;
   align-items: center;
@@ -639,6 +670,28 @@ body {
   padding: 8px;
 }
 
+.message-system {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  margin: 2px 0;
+}
+.message-system-text {
+  font-size: 12px;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+  padding: 6px 14px;
+  line-height: 1.4;
+}
+.message-system-time {
+  font-size: 10px;
+  color: rgba(154, 154, 154, 0.75);
+}
+
 .message {
   display: flex;
   gap: 10px;
@@ -782,8 +835,18 @@ body {
 /* ---------- 입력창 ---------- */
 .message-input {
   border-top: 1px solid var(--border);
-  padding: 12px 20px;
+  padding: 10px 20px 12px;
   position: relative;
+}
+.ai-rag-hint {
+  margin: 0 0 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted);
+  background: rgba(17, 100, 163, 0.1);
+  border: 1px solid rgba(17, 100, 163, 0.22);
+  border-radius: 8px;
 }
 .message-input.dragging {
   background: rgba(17, 100, 163, 0.15);
@@ -802,12 +865,12 @@ body {
 }
 .input-row {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 8px;
   background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 6px 8px;
+  padding: 4px 8px;
 }
 .attach-btn {
   width: 32px;
@@ -825,16 +888,17 @@ body {
 }
 .text-area {
   flex: 1;
-  resize: vertical;
-  min-height: 72px;
+  resize: none;
+  min-height: 36px;
   max-height: 320px;
   border: none;
   background: transparent;
   color: var(--text-primary);
   font-size: 14px;
   font-family: inherit;
-  padding: 8px 4px;
+  padding: 6px 4px;
   line-height: 1.45;
+  overflow-y: auto;
 }
 .text-area.code-friendly {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;

@@ -116,7 +116,7 @@ export function ChatPage({ currentUser, onLogout, onUserUpdated }: Props): JSX.E
           )
         );
 
-        if (message.senderId !== currentUserIdRef.current) {
+        if (message.senderId !== currentUserIdRef.current && message.messageType !== "system") {
           const room = roomsRef.current.find((r) => r.id === message.roomId);
           if (room && (room.type === "channel" || room.type === "dm" || room.type === "group")) {
             const label = roomNotificationLabel(room, usersRef.current, currentUserIdRef.current);

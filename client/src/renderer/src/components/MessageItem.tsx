@@ -57,9 +57,19 @@ export function MessageItem({
   }
 
   const isAi = message.messageType === "ai_response";
+  const isSystem = message.messageType === "system";
   const isAiQuestion = aiFlowKind === "question";
   const isAiAnswer = aiFlowKind === "answer";
   const askerName = message.senderName ?? "사용자";
+
+  if (isSystem) {
+    return (
+      <div className="message-system">
+        <span className="message-system-text">{message.content}</span>
+        <span className="message-system-time">{formatTime(message.createdAt)}</span>
+      </div>
+    );
+  }
 
   const avatarLabel = isAiAnswer || (isAi && !aiFlowKind) ? "🤖" : message.senderName?.[0] ?? "?";
 

@@ -17,7 +17,7 @@ function previewText(message: Message): string {
   return "새 메시지";
 }
 
-/** OS 알림 + 앱 내 우측 하단 토스트 */
+/** 앱 내 토스트(활성 창) + 트레이 토스트(비활성/최소화 시, 메인 프로세스) */
 export function notifyIncomingMessage({ room, message, roomLabel }: NotifyParams): void {
   const body = `${message.senderName}: ${previewText(message)}`;
   const title = roomLabel;

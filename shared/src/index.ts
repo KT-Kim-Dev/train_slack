@@ -9,7 +9,7 @@
 // ---------------------------------------------------------------------------
 
 export type RoomType = "channel" | "group" | "dm" | "ai";
-export type MessageType = "text" | "file" | "image" | "ai_response" | "card";
+export type MessageType = "text" | "file" | "image" | "ai_response" | "card" | "system";
 
 /** 사용자가 설정하는 온라인 상태 (대화가능/바쁨/자리비움) */
 export type UserPresenceStatus = "available" | "busy" | "away";
@@ -96,6 +96,13 @@ export interface RagSyncResult {
   chunksIndexed: number;
   chunksRemoved: number;
   errors: string[];
+}
+
+/** RAG 폴더에 등록된 문서 파일 정보 */
+export interface RagFileInfo {
+  relativePath: string;
+  size: number;
+  updatedAt: string;
 }
 
 export interface Room {

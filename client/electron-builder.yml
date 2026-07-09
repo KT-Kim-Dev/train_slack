@@ -24,5 +24,11 @@ portable:
 
 # 인트라넷/오프라인 환경 — 자동 업데이트/코드사인 생략
 publish: null
+extraResources:
+  - from: build/tray-icon.png
+    to: tray-icon.png
+  - from: build/icon.png
+    to: icon.png
+
 asar: true
 compression: maximum

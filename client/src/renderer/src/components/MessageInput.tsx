@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from "react";
 import { uploadFiles } from "../api";
-import { COMMAND_HINTS } from "../commands";
+import { AI_COMMAND_HINTS, COMMAND_HINTS } from "../commands";
 
 const TEXTAREA_MAX_HEIGHT = 320;
+const TEXTAREA_MIN_HEIGHT = 36;
 
 interface Props {
   roomId: number;
@@ -23,7 +24,8 @@ export function MessageInput({ roomId, isAiRoom, onSubmit }: Props): JSX.Element
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, TEXTAREA_MAX_HEIGHT)}px`;
+    const next = Math.max(TEXTAREA_MIN_HEIGHT, Math.min(el.scrollHeight, TEXTAREA_MAX_HEIGHT));
+    el.style.height = `${next}px`;
   }, [text]);
 
   async function submitText(): Promise<void> {
@@ -46,6 +48,26 @@ export function MessageInput({ roomId, isAiRoom, onSubmit }: Props): JSX.Element
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       void submitText();
+    }
+  }
+
+  /** 클립보드 이미지 붙여넣기 → 파일 업로드 */
+  function handlePaste(e: ClipboardEvent<HTMLTextAreaElement>): void {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    const imageFiles: File[] = [];
+    for (const item of Array.from(items)) {
+      if (!item.type.startsWith("image/")) continue;
+      const blob = item.getAsFile();
+      if (!blob) continue;
+      const ext = item.type.split("/")[1]?.replace("jpeg", "jpg") || "png";
+      imageFiles.push(new File([blob], `clipboard-${Date.now()}.${ext}`, { type: item.type }));
+    }
+
+    if (imageFiles.length > 0) {
+      e.preventDefault();
+      void handleFiles(imageFiles);
     }
   }
 
@@ -80,6 +102,12 @@ export function MessageInput({ roomId, isAiRoom, onSubmit }: Props): JSX.Element
       onDragLeave={() => setDragging(false)}
       onDrop={handleDrop}
     >
+      {isAiRoom && (
+        <p className="ai-rag-hint">
+          AI 어시스턴트에 txt, md, doc 파일을 업로드하면 RAG 시스템에 반영됩니다.
+        </p>
+      )}
+
       {uploadPercent !== null && (
         <div className="upload-progress">
           <div className="upload-bar" style={{ width: `${uploadPercent}%` }} />
@@ -87,7 +115,11 @@ export function MessageInput({ roomId, isAiRoom, onSubmit }: Props): JSX.Element
         </div>
       )}
       {error && <div className="input-error">{error}</div>}
-      {dragging && <div className="drop-hint">여기에 파일을 놓아 전송</div>}
+      {dragging && (
+        <div className="drop-hint">
+          {isAiRoom ? "txt, md, doc 파일을 여기에 놓아 RAG에 반영" : "여기에 파일을 놓아 전송"}
+        </div>
+      )}
 
       <div className="input-row">
         <button
@@ -102,6 +134,7 @@ export function MessageInput({ roomId, isAiRoom, onSubmit }: Props): JSX.Element
           type="file"
           multiple
           hidden
+          accept={isAiRoom ? ".txt,.md,.markdown,.doc,.docx,text/plain,text/markdown" : undefined}
           onChange={(e) => e.target.files && void handleFiles(e.target.files)}
         />
         <textarea
@@ -110,18 +143,23 @@ export function MessageInput({ roomId, isAiRoom, onSubmit }: Props): JSX.Element
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           placeholder={
             isAiRoom
               ? "AI에게 질문하세요 (Enter: 전송, Shift+Enter: 줄바꿈)"
-              : "메시지 또는 소스 코드 입력 (Enter: 전송, Shift+Enter: 줄바꿈)"
+              : "메시지 또는 소스 코드 입력 (Enter: 전송, Shift+Enter: 줄바꿈, Ctrl+V: 이미지 붙여넣기)"
           }
-          rows={3}
+          rows={1}
         />
         <button className="send-btn" onClick={submitText} disabled={sending || !text.trim()}>
           전송
         </button>
       </div>
-      {!isAiRoom && <div className="command-hints">명령어: {COMMAND_HINTS.join("  ·  ")}</div>}
+      {isAiRoom ? (
+        <div className="command-hints">명령어: {AI_COMMAND_HINTS.join("  ·  ")}</div>
+      ) : (
+        <div className="command-hints">명령어: {COMMAND_HINTS.join("  ·  ")}</div>
+      )}
     </div>
   );
 }

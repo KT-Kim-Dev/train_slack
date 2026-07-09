@@ -345,3 +345,78 @@ export function getRagStats() {
     lastSyncAt: settings.rag_last_sync_at || null,
   };
 }
+
+export interface RagFileInfo {
+  relativePath: string;
+  size: number;
+  updatedAt: string;
+}
+
+const AI_UPLOADS_PREFIX = "ai-uploads/";
+
+/** RAG 폴더에 반영된 문서 목록 (ai-uploads 전체 + 기타 색인 대상 문서, conversations 제외) */
+export async function listRagFolderFiles(): Promise<RagFileInfo[]> {
+  const folder = config.ragDocumentFolder;
+  const indexed = await collectDocumentFiles(folder);
+  const map = new Map<string, RagFileInfo>();
+
+  for (const file of indexed) {
+    if (file.relativePath.startsWith("conversations/")) continue;
+    map.set(file.relativePath, {
+      relativePath: file.relativePath,
+      size: file.size,
+      updatedAt: new Date(file.mtimeMs).toISOString(),
+    });
+  }
+
+  const aiUploadsDir = path.join(folder, "ai-uploads");
+  try {
+    const entries = await fs.readdir(aiUploadsDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isFile() || entry.name.startsWith(".")) continue;
+      const absolutePath = path.join(aiUploadsDir, entry.name);
+      const stat = await fs.stat(absolutePath);
+      const relativePath = `${AI_UPLOADS_PREFIX}${entry.name}`;
+      map.set(relativePath, {
+        relativePath,
+        size: stat.size,
+        updatedAt: stat.mtime.toISOString(),
+      });
+    }
+  } catch {
+    /* ai-uploads 없음 */
+  }
+
+  return [...map.values()].sort((a, b) => a.relativePath.localeCompare(b.relativePath, "ko"));
+}
+
+export function formatRagFileListMessage(files: RagFileInfo[], folderPath: string): string {
+  if (files.length === 0) {
+    return [
+      "📂 RAG 폴더에 등록된 문서가 없습니다.",
+      "",
+      `경로: ${folderPath}`,
+      "",
+      "txt, md, doc 파일을 AI 어시스턴트에 업로드하면 RAG에 반영됩니다.",
+    ].join("\n");
+  }
+
+  const lines = files.map((f) => {
+    const kb = f.size >= 1024 ? `${(f.size / 1024).toFixed(1)} KB` : `${f.size} B`;
+    const date = new Date(f.updatedAt).toLocaleString("ko-KR", {
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    return `• ${f.relativePath} (${kb}, ${date})`;
+  });
+
+  return [
+    `📂 RAG 폴더 파일 (${files.length}개)`,
+    "",
+    ...lines,
+    "",
+    `경로: ${folderPath}`,
+  ].join("\n");
+}

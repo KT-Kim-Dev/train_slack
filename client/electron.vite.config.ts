@@ -13,7 +13,10 @@ export default defineConfig({
   preload: {
     build: {
       rollupOptions: {
-        input: { index: resolve(__dirname, "src/preload/index.ts") },
+        input: {
+          index: resolve(__dirname, "src/preload/index.ts"),
+          trayToast: resolve(__dirname, "src/main/tray-toast-preload.ts"),
+        },
       },
     },
   },

@@ -11,6 +11,7 @@ export type ParsedCommand =
   | { type: "build-run"; project: string }
   | { type: "build-status"; project: string }
   | { type: "calendar"; date: string }
+  | { type: "rag-list" }
   | { type: "error"; message: string };
 
 function pad2(n: number): string {
@@ -111,10 +112,17 @@ export function parseCommand(raw: string): ParsedCommand {
       return { type: "calendar", date: resolved };
     }
 
+    case "rag":
+      if (argStr) return { type: "error", message: "사용법: /rag (RAG 폴더 파일 목록 조회)" };
+      return { type: "rag-list" };
+
     default:
       return { type: "error", message: `알 수 없는 명령어입니다: /${cmd}` };
   }
 }
+
+/** AI 어시스턴트 방 입력창 안내 */
+export const AI_COMMAND_HINTS = ["/rag"];
 
 /** 입력창 하단 안내에 노출할 명령어 도움말 */
 export const COMMAND_HINTS = [

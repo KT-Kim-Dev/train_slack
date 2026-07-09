@@ -19,8 +19,8 @@ import {
 } from "../db/rooms.js";
 import { AI_USERNAME } from "../db/index.js";
 import { getUserById, toPublicUser } from "../db/users.js";
-import { getMessagePage } from "../db/messages.js";
-import { notifyRoomCreated, notifyRoomUnhidden } from "../sockets/index.js";
+import { getMessagePage, insertMemberSystemMessage } from "../db/messages.js";
+import { broadcastMessage, notifyRoomCreated, notifyRoomUnhidden } from "../sockets/index.js";
 import { logger } from "../logger.js";
 
 export const roomsRouter = Router();
@@ -155,6 +155,11 @@ roomsRouter.post("/:id/leave", (req: AuthedRequest, res) => {
   }
   if (room.type === "dm") {
     hideRoom(roomId, req.auth!.userId, true);
+  } else if (room.type === "group") {
+    const userId = req.auth!.userId;
+    const message = insertMemberSystemMessage({ roomId, userId, action: "left" });
+    broadcastMessage(message);
+    removeMember(roomId, userId);
   } else {
     removeMember(roomId, req.auth!.userId);
   }
@@ -187,6 +192,8 @@ roomsRouter.post("/:id/members", (req: AuthedRequest, res) => {
     if (!isMember(roomId, uid)) {
       addMember(roomId, uid);
       added.push(uid);
+      const message = insertMemberSystemMessage({ roomId, userId: uid, action: "joined" });
+      broadcastMessage(message);
     }
   }
   if (added.length > 0) {

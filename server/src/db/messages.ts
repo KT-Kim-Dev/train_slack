@@ -66,6 +66,29 @@ export function getFileMeta(
   return { filePath: row.file_path, fileName: row.file_name, messageType: row.message_type };
 }
 
+/** 그룹채팅 멤버 입·퇴장 시스템 메시지 */
+export function insertMemberSystemMessage(params: {
+  roomId: number;
+  userId: number;
+  action: "joined" | "left";
+}): Message {
+  const user = db.prepare("SELECT display_name FROM users WHERE id = ?").get(params.userId) as
+    | { display_name: string }
+    | undefined;
+  const displayName = user?.display_name ?? "알 수 없음";
+  const content =
+    params.action === "joined"
+      ? `[${displayName}] 이 들어왔습니다.`
+      : `[${displayName}] 이 나갔습니다.`;
+
+  const result = db
+    .prepare(
+      "INSERT INTO messages (room_id, sender_id, message_type, content) VALUES (?, ?, 'system', ?)"
+    )
+    .run(params.roomId, params.userId, content);
+  return getMessageById(Number(result.lastInsertRowid))!;
+}
+
 export function insertTextMessage(params: {
   roomId: number;
   senderId: number;
