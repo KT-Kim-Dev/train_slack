@@ -20,6 +20,10 @@ const CHUNK_SIZE = 800;
 const CHUNK_OVERLAP = 100;
 const SNAPSHOT_KEY = "rag_file_snapshot";
 
+function stripUtf8Bom(text: string): string {
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+}
+
 export interface RagSyncResult {
   filesProcessed: number;
   filesUpdated: number;
@@ -330,7 +334,8 @@ export async function syncSharedFolder(): Promise<RagSyncResult> {
     chunksRemoved += deleteDocumentChunksForFile(file.relativePath);
 
     try {
-      const text = await fs.readFile(file.absolutePath, "utf8");
+      const raw = await fs.readFile(file.absolutePath, "utf8");
+      const text = stripUtf8Bom(raw);
       const chunks = chunkDocumentText(file.relativePath, text);
       for (let i = 0; i < chunks.length; i++) {
         const sourceKey = `${file.relativePath}#${i}`;

@@ -9,6 +9,8 @@ import { invalidateRagSnapshotEntry, syncSharedFolder } from "./rag.js";
 
 export const SCHEDULE_RAG_FILE = "schedule.csv";
 const LEGACY_SCHEDULE_RAG_FILE = "schedule.md";
+/** Excel(Windows) 한글 CSV 호환용 UTF-8 BOM */
+const UTF8_BOM = "\uFEFF";
 
 const EXPORT_DEBOUNCE_MS = 3000;
 const SYNC_DEBOUNCE_MS = 5000;
@@ -82,7 +84,7 @@ function buildScheduleCsv(events: CalendarEvent[]): string {
   for (const event of events) {
     lines.push(eventToCsvRow(event));
   }
-  return `${lines.join("\n")}\n`;
+  return `${UTF8_BOM}${lines.join("\n")}\n`;
 }
 
 async function removeLegacyScheduleFile(): Promise<void> {
