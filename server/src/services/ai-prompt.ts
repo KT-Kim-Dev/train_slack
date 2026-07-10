@@ -20,7 +20,8 @@ export function buildAiSystemPrompt(
 
   parts.push("간결하고 정확하게 답변하세요.");
   parts.push(
-    "일정·스케줄 관련 질문에는 RAG 폴더의 schedule.md(회사 캘린더 일정)를 우선 참고하세요."
+    "일정·스케줄 관련 질문에는 RAG 폴더의 schedule.csv(회사 캘린더 일정, CSV 원본)를 우선 참고하세요. " +
+      "CSV 컬럼 값을 그대로 인용하고 임의로 요약·변형하지 마세요."
   );
 
   const extra = settings.ai_extra_instructions.trim();

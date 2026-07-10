@@ -15,7 +15,7 @@ import { logger } from "../logger.js";
 import { embedText } from "./embeddings.js";
 import { IntegrationError } from "./ollama.js";
 
-const DOCUMENT_EXTENSIONS = new Set([".txt", ".md", ".markdown", ".memo"]);
+const DOCUMENT_EXTENSIONS = new Set([".txt", ".md", ".markdown", ".memo", ".csv"]);
 const CHUNK_SIZE = 800;
 const CHUNK_OVERLAP = 100;
 const SNAPSHOT_KEY = "rag_file_snapshot";
@@ -74,6 +74,53 @@ export function chunkText(text: string): string[] {
     start = Math.max(end - CHUNK_OVERLAP, start + 1);
   }
   return chunks;
+}
+
+/** CSV는 헤더 + 데이터 1행 단위로 색인해 일정 조회 정확도를 높인다 */
+function parseCsvRows(content: string): string[] {
+  const rows: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < content.length; i++) {
+    const char = content[i];
+    if (char === '"') {
+      if (inQuotes && content[i + 1] === '"') {
+        current += '""';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+        current += char;
+      }
+      continue;
+    }
+    if ((char === "\n" || char === "\r") && !inQuotes) {
+      if (char === "\r" && content[i + 1] === "\n") i++;
+      rows.push(current);
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+
+  if (current.length > 0) rows.push(current);
+  return rows;
+}
+
+export function chunkCsvText(text: string): string[] {
+  const rows = parseCsvRows(text.replace(/\r\n/g, "\n").trim());
+  if (rows.length === 0) return [];
+  if (rows.length === 1) return [rows[0]];
+
+  const header = rows[0];
+  return rows.slice(1).filter((row) => row.trim()).map((row) => `${header}\n${row}`);
+}
+
+function chunkDocumentText(relativePath: string, text: string): string[] {
+  if (relativePath.toLowerCase().endsWith(".csv")) {
+    return chunkCsvText(text);
+  }
+  return chunkText(text);
 }
 
 /** 질문과 유사한 지식 조각을 검색해 프롬프트용 텍스트로 반환한다. 실패·데이터 없음 시 null (AI 응답에는 영향 없음) */
@@ -284,7 +331,7 @@ export async function syncSharedFolder(): Promise<RagSyncResult> {
 
     try {
       const text = await fs.readFile(file.absolutePath, "utf8");
-      const chunks = chunkText(text);
+      const chunks = chunkDocumentText(file.relativePath, text);
       for (let i = 0; i < chunks.length; i++) {
         const sourceKey = `${file.relativePath}#${i}`;
         activeKeys.add(sourceKey);

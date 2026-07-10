@@ -161,7 +161,7 @@ export function listEventsForUser(params: {
     });
 }
 
-/** RAG schedule.md 기록용 — 전체 일정 (시작 시각 순) */
+/** RAG schedule.csv 기록용 — 전체 일정 (시작 시각 순) */
 export function listAllEventsForRagExport(): CalendarEvent[] {
   const rows = db
     .prepare(`${EVENT_SELECT} ORDER BY e.start_at ASC, e.id ASC`)
