@@ -4,6 +4,7 @@ import { getSettings } from "../db/settings.js";
 import { logger } from "../logger.js";
 import { syncSharedFolder } from "./rag.js";
 import { exportAllRoomConversations } from "./rag-export.js";
+import { exportCalendarScheduleToRag } from "./calendar-rag-export.js";
 
 const SYNC_INTERVAL_MS = 10 * 60 * 1000;
 const STARTUP_DELAY_MS = 30 * 1000;
@@ -53,9 +54,11 @@ export function startRagScheduler(): void {
   }
 
   setTimeout(() => {
-    void exportAllRoomConversations().finally(() => {
-      void runScheduledSync();
-    });
+    void exportAllRoomConversations()
+      .then(() => exportCalendarScheduleToRag())
+      .finally(() => {
+        void runScheduledSync();
+      });
   }, STARTUP_DELAY_MS);
 
   timer = setInterval(() => {

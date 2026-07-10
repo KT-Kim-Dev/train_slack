@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { CALENDAR_EVENT_COLORS, type CalendarEventColor, type CalendarEventInput } from "@intra-chat/shared";
 import type { ScheduleCard } from "@intra-chat/shared";
 import type { AuthedRequest } from "../auth/middleware.js";
 import { requireAuth } from "../auth/middleware.js";
@@ -18,6 +19,7 @@ import { insertCardMessage } from "../db/messages.js";
 import { logCommand } from "../db/integrations.js";
 import { broadcastMessage, notifyCalendarEvent } from "../sockets/index.js";
 import { sendAttendeeScheduleDms } from "../services/calendar-dm-notify.js";
+import { scheduleCalendarScheduleExport } from "../services/calendar-rag-export.js";
 import { logger } from "../logger.js";
 
 export const calendarRouter = Router();
@@ -32,6 +34,12 @@ const eventInputSchema = z.object({
   allDay: z.boolean().optional(),
   visibility: z.enum(["private", "company"]).optional(),
   reminderMinutes: z.number().int().min(0).max(7 * 24 * 60).optional(),
+  color: z
+    .string()
+    .refine((value) => (CALENDAR_EVENT_COLORS as readonly string[]).includes(value), {
+      message: "유효하지 않은 일정 색상입니다.",
+    })
+    .optional(),
   attendeeIds: z.array(z.number().int().positive()).optional(),
 });
 
@@ -48,6 +56,13 @@ function validateTimeRange(startAt: string, endAt: string, allDay?: boolean): st
     return "종료 시각은 시작 시각보다 이후여야 합니다.";
   }
   return null;
+}
+
+function toEventInput(data: z.infer<typeof eventInputSchema>): CalendarEventInput {
+  return {
+    ...data,
+    color: data.color as CalendarEventColor | undefined,
+  };
 }
 
 /** 기간 내 일정 목록 (scope=mine|all) */
@@ -163,7 +178,7 @@ calendarRouter.post("/events", (req: AuthedRequest, res) => {
     return;
   }
 
-  const input = parsed.data;
+  const input = toEventInput(parsed.data);
   const rangeError = validateTimeRange(input.startAt, input.endAt, input.allDay);
   if (rangeError) {
     res.status(400).json({ error: rangeError });
@@ -181,6 +196,7 @@ calendarRouter.post("/events", (req: AuthedRequest, res) => {
     notice: "added",
   });
   logger.info("캘린더 일정 생성", { eventId: event.id, userId: req.auth!.userId });
+  scheduleCalendarScheduleExport();
   res.status(201).json(event);
 });
 
@@ -203,7 +219,7 @@ calendarRouter.put("/events/:id", (req: AuthedRequest, res) => {
     return;
   }
 
-  const input = parsed.data;
+  const input = toEventInput(parsed.data);
   const rangeError = validateTimeRange(input.startAt, input.endAt, input.allDay);
   if (rangeError) {
     res.status(400).json({ error: rangeError });
@@ -252,6 +268,7 @@ calendarRouter.put("/events/:id", (req: AuthedRequest, res) => {
     added,
     removed,
   });
+  scheduleCalendarScheduleExport();
   res.json(event);
 });
 
@@ -281,5 +298,6 @@ calendarRouter.delete("/events/:id", (req: AuthedRequest, res) => {
     });
   }
   logger.info("캘린더 일정 삭제", { eventId: id, userId: req.auth!.userId });
+  scheduleCalendarScheduleExport();
   res.json({ ok: true });
 });

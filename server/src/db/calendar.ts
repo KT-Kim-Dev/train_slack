@@ -1,9 +1,11 @@
 import type {
   CalendarAttendee,
   CalendarEvent,
+  CalendarEventColor,
   CalendarEventInput,
   CalendarVisibility,
 } from "@intra-chat/shared";
+import { CALENDAR_EVENT_COLORS, DEFAULT_CALENDAR_EVENT_COLOR } from "@intra-chat/shared";
 import { db, AI_USERNAME } from "./index.js";
 
 interface EventRow {
@@ -16,6 +18,7 @@ interface EventRow {
   all_day: number;
   visibility: string;
   reminder_minutes: number;
+  color: string;
   created_by: number;
   created_at: string;
   updated_at: string;
@@ -31,6 +34,13 @@ interface AttendeeRow {
 
 function normalizeVisibility(raw: string): CalendarVisibility {
   return raw === "private" ? "private" : "company";
+}
+
+function normalizeEventColor(raw: string | null | undefined): CalendarEventColor {
+  const value = (raw ?? DEFAULT_CALENDAR_EVENT_COLOR).toLowerCase();
+  return (CALENDAR_EVENT_COLORS as readonly string[]).includes(value)
+    ? (value as CalendarEventColor)
+    : DEFAULT_CALENDAR_EVENT_COLOR;
 }
 
 function toAttendee(row: AttendeeRow): CalendarAttendee {
@@ -66,6 +76,7 @@ function toEvent(row: EventRow): CalendarEvent {
     allDay: row.all_day === 1,
     visibility: normalizeVisibility(row.visibility),
     reminderMinutes: row.reminder_minutes,
+    color: normalizeEventColor(row.color),
     createdBy: row.created_by,
     creatorName: row.creator_name,
     createdAt: row.created_at,
@@ -150,6 +161,14 @@ export function listEventsForUser(params: {
     });
 }
 
+/** RAG schedule.md 기록용 — 전체 일정 (시작 시각 순) */
+export function listAllEventsForRagExport(): CalendarEvent[] {
+  const rows = db
+    .prepare(`${EVENT_SELECT} ORDER BY e.start_at ASC, e.id ASC`)
+    .all() as EventRow[];
+  return rows.map(toEvent);
+}
+
 /** 로컬 날짜(YYYY-MM-DD) 하루 일정 — 호출자가 dayStart/dayEnd ISO를 넘김 */
 export function listEventsForLocalDay(params: {
   userId: number;
@@ -194,12 +213,13 @@ export function createEvent(createdBy: number, input: CalendarEventInput): Calen
     input.reminderMinutes == null || Number.isNaN(input.reminderMinutes)
       ? 10
       : Math.max(0, Math.floor(input.reminderMinutes));
+  const color = normalizeEventColor(input.color);
 
   const result = db
     .prepare(
       `INSERT INTO calendar_events
-        (title, description, location, start_at, end_at, all_day, visibility, reminder_minutes, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        (title, description, location, start_at, end_at, all_day, visibility, reminder_minutes, color, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       input.title.trim(),
@@ -210,6 +230,7 @@ export function createEvent(createdBy: number, input: CalendarEventInput): Calen
       input.allDay ? 1 : 0,
       visibility,
       reminderMinutes,
+      color,
       createdBy
     );
 
@@ -231,11 +252,12 @@ export function updateEvent(
     input.reminderMinutes == null || Number.isNaN(input.reminderMinutes)
       ? existing.reminderMinutes
       : Math.max(0, Math.floor(input.reminderMinutes));
+  const color = normalizeEventColor(input.color ?? existing.color);
 
   db.prepare(
     `UPDATE calendar_events SET
       title = ?, description = ?, location = ?, start_at = ?, end_at = ?,
-      all_day = ?, visibility = ?, reminder_minutes = ?,
+      all_day = ?, visibility = ?, reminder_minutes = ?, color = ?,
       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
      WHERE id = ?`
   ).run(
@@ -247,6 +269,7 @@ export function updateEvent(
     input.allDay ? 1 : 0,
     visibility,
     reminderMinutes,
+    color,
     eventId
   );
 

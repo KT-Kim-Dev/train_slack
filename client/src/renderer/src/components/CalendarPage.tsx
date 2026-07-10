@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
 import type { CalendarEvent, PublicUser } from "@intra-chat/shared";
 import { fetchCalendarEvents } from "../api";
-import { assignEventColors } from "../utils/eventColors";
+import { DEFAULT_CALENDAR_EVENT_COLOR } from "../utils/eventColors";
 import { EventModal } from "./EventModal";
 
 interface Props {
@@ -135,8 +135,6 @@ export function CalendarPage({
     return cells;
   }, [year, month]);
 
-  const eventColors = useMemo(() => assignEventColors(events), [events]);
-
   const todayYmd = toLocalYmd(new Date());
   const titleLabel = `${year}년 ${month + 1}월`;
 
@@ -231,12 +229,12 @@ export function CalendarPage({
                 </span>
                 <div className="calendar-day-events">
                   {dayEvents.slice(0, 3).map((ev) => {
-                    const color = eventColors.get(ev.id) ?? "#1a73e8";
+                    const chipColor = ev.color ?? DEFAULT_CALENDAR_EVENT_COLOR;
                     return (
                       <span
                         key={`${ev.id}-${ymd}`}
                         className="calendar-chip"
-                        style={{ backgroundColor: color }}
+                        style={{ backgroundColor: chipColor }}
                         title={ev.title}
                         onClick={(e) => openEvent(ev, e)}
                       >

@@ -1963,3 +1963,30 @@ body {
   font-size: 12px;
   color: var(--text-muted);
 }
+.event-color-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+.event-color-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.event-color-swatch:hover:not(:disabled) {
+  transform: scale(1.08);
+}
+.event-color-swatch.selected {
+  border-color: #fff;
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.event-color-swatch:disabled {
+  cursor: default;
+  opacity: 0.85;
+}

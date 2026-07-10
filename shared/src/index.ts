@@ -189,6 +189,23 @@ export type CardPayload = IssueCard | BuildCard | ScheduleCard;
 export type CalendarVisibility = "private" | "company";
 export type CalendarEventAction = "created" | "updated" | "deleted" | "reminder";
 
+/** 캘린더 일정 칩에 사용할 10가지 색상 */
+export const CALENDAR_EVENT_COLORS = [
+  "#1a73e8", // blue
+  "#0b8043", // green
+  "#d50000", // red
+  "#f4511e", // orange
+  "#8e24aa", // purple
+  "#039be5", // light blue
+  "#f6bf26", // yellow
+  "#7986cb", // indigo
+  "#616161", // gray
+  "#039487", // turquoise
+] as const;
+
+export type CalendarEventColor = (typeof CALENDAR_EVENT_COLORS)[number];
+export const DEFAULT_CALENDAR_EVENT_COLOR: CalendarEventColor = CALENDAR_EVENT_COLORS[0];
+
 export interface CalendarAttendee {
   userId: number;
   displayName: string;
@@ -206,6 +223,7 @@ export interface CalendarEvent {
   allDay: boolean;
   visibility: CalendarVisibility;
   reminderMinutes: number;
+  color: CalendarEventColor;
   createdBy: number;
   creatorName: string;
   createdAt: string;
@@ -222,6 +240,7 @@ export interface CalendarEventInput {
   allDay?: boolean;
   visibility?: CalendarVisibility;
   reminderMinutes?: number;
+  color?: CalendarEventColor;
   attendeeIds?: number[];
 }
 

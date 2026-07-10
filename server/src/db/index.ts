@@ -130,6 +130,7 @@ CREATE TABLE IF NOT EXISTS calendar_events (
   all_day          INTEGER NOT NULL DEFAULT 0,
   visibility       TEXT NOT NULL DEFAULT 'company' CHECK (visibility IN ('private','company')),
   reminder_minutes INTEGER NOT NULL DEFAULT 10,
+  color            TEXT NOT NULL DEFAULT '#1a73e8',
   created_by       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   updated_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
@@ -274,6 +275,15 @@ function runMigrations(): void {
   if (!colNames.has("profile_image_path")) {
     logger.info("DB 마이그레이션: users.profile_image_path 추가");
     db.exec("ALTER TABLE users ADD COLUMN profile_image_path TEXT");
+  }
+
+  const calendarCols = db.prepare("PRAGMA table_info(calendar_events)").all() as { name: string }[];
+  const calendarColNames = new Set(calendarCols.map((c) => c.name));
+  if (!calendarColNames.has("color")) {
+    logger.info("DB 마이그레이션: calendar_events.color 추가");
+    db.exec(
+      "ALTER TABLE calendar_events ADD COLUMN color TEXT NOT NULL DEFAULT '#1a73e8'"
+    );
   }
 }
 

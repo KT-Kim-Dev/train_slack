@@ -1,5 +1,9 @@
 import { useMemo, useState } from "react";
-import type { CalendarEvent, CalendarEventInput, PublicUser } from "@intra-chat/shared";
+import type { CalendarEvent, CalendarEventColor, CalendarEventInput, PublicUser } from "@intra-chat/shared";
+import {
+  CALENDAR_EVENT_COLORS,
+  DEFAULT_CALENDAR_EVENT_COLOR,
+} from "@intra-chat/shared";
 import {
   createCalendarEvent,
   deleteCalendarEvent,
@@ -74,6 +78,9 @@ export function EventModal({
     event?.visibility ?? "company"
   );
   const [reminderMinutes, setReminderMinutes] = useState(event?.reminderMinutes ?? 10);
+  const [color, setColor] = useState<CalendarEventColor>(
+    event?.color ?? DEFAULT_CALENDAR_EVENT_COLOR
+  );
   const [startDate, setStartDate] = useState(
     event ? toLocalDateInput(event.startAt) : defaultDate ?? todayLocalDate()
   );
@@ -144,6 +151,7 @@ export function EventModal({
       allDay,
       visibility,
       reminderMinutes,
+      color,
       attendeeIds: [...selected],
     };
 
@@ -300,6 +308,25 @@ export function EventModal({
               <option value={1440}>1일 전</option>
             </select>
           </label>
+        </div>
+
+        <div className="field">
+          <span>표시 색상</span>
+          <div className="event-color-picker" role="radiogroup" aria-label="일정 표시 색상">
+            {CALENDAR_EVENT_COLORS.map((option) => (
+              <button
+                key={option}
+                type="button"
+                className={`event-color-swatch ${color === option ? "selected" : ""}`}
+                style={{ backgroundColor: option }}
+                disabled={!canEdit}
+                aria-label={`색상 ${option}`}
+                aria-checked={color === option}
+                role="radio"
+                onClick={() => setColor(option)}
+              />
+            ))}
+          </div>
         </div>
 
         <div className="field">
