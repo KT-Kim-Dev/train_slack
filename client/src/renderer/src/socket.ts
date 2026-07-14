@@ -38,14 +38,19 @@ export function disconnectSocket(): void {
 export function sendMessage(
   roomId: number,
   content: string,
-  mentionUserIds?: number[]
+  mentionUserIds?: number[],
+  replyToMessageId?: number
 ): Promise<Message> {
   return new Promise((resolve, reject) => {
     if (!socket) return reject(new Error("소켓이 연결되지 않았습니다."));
-    socket.emit("message:send", { roomId, content, mentionUserIds }, (result) => {
-      if (result.ok && result.message) resolve(result.message);
-      else reject(new Error(result.error ?? "메시지 전송에 실패했습니다."));
-    });
+    socket.emit(
+      "message:send",
+      { roomId, content, mentionUserIds, replyToMessageId },
+      (result) => {
+        if (result.ok && result.message) resolve(result.message);
+        else reject(new Error(result.error ?? "메시지 전송에 실패했습니다."));
+      }
+    );
   });
 }
 

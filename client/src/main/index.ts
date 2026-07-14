@@ -11,7 +11,7 @@ import {
 import { writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { destroyTrayToast, showTrayToast } from "./tray-toast";
+import { destroyTrayToast, registerTrayToastIpc, showTrayToast } from "./tray-toast";
 
 /**
  * Electron 메인 프로세스.
@@ -235,100 +235,105 @@ function handleBackgroundNotification(
   });
 }
 
-ipcMain.handle(
-  "file:save",
-  async (_event, payload: { fileName: string; data: ArrayBuffer }): Promise<string | null> => {
-    const { canceled, filePath } = await dialog.showSaveDialog({
-      defaultPath: payload.fileName,
-    });
-    if (canceled || !filePath) return null;
-    const buffer = Buffer.from(new Uint8Array(payload.data));
-    await writeFile(filePath, buffer);
-    return filePath;
-  }
-);
+function registerIpcHandlers(): void {
+  registerTrayToastIpc();
 
-/** 채팅 첨부파일 다운로드 — 바이너리 무결성 검증 후 저장 */
-ipcMain.handle(
-  "file:download",
-  async (
-    _event,
-    payload: { url: string; fileName: string; expectedSize?: number | null }
-  ): Promise<string | null> => {
-    const res = await fetch(payload.url);
-    if (!res.ok) {
-      let detail = `다운로드 실패 (${res.status})`;
-      try {
-        const body = (await res.json()) as { error?: string };
-        if (body?.error) detail = body.error;
-      } catch {
-        /* 바이너리 응답 등 */
+  ipcMain.handle(
+    "file:save",
+    async (_event, payload: { fileName: string; data: ArrayBuffer }): Promise<string | null> => {
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        defaultPath: payload.fileName,
+      });
+      if (canceled || !filePath) return null;
+      const buffer = Buffer.from(new Uint8Array(payload.data));
+      await writeFile(filePath, buffer);
+      return filePath;
+    }
+  );
+
+  /** 채팅 첨부파일 다운로드 — 바이너리 무결성 검증 후 저장 */
+  ipcMain.handle(
+    "file:download",
+    async (
+      _event,
+      payload: { url: string; fileName: string; expectedSize?: number | null }
+    ): Promise<string | null> => {
+      const res = await fetch(payload.url);
+      if (!res.ok) {
+        let detail = `다운로드 실패 (${res.status})`;
+        try {
+          const body = (await res.json()) as { error?: string };
+          if (body?.error) detail = body.error;
+        } catch {
+          /* 바이너리 응답 등 */
+        }
+        throw new Error(detail);
       }
-      throw new Error(detail);
-    }
 
-    const arrayBuffer = await res.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+      const arrayBuffer = await res.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
 
-    const contentLength = res.headers.get("content-length");
-    if (contentLength) {
-      const expected = Number(contentLength);
-      if (Number.isFinite(expected) && expected !== buffer.length) {
-        throw new Error("다운로드가 완전하지 않습니다. 파일 크기가 일치하지 않습니다.");
+      const contentLength = res.headers.get("content-length");
+      if (contentLength) {
+        const expected = Number(contentLength);
+        if (Number.isFinite(expected) && expected !== buffer.length) {
+          throw new Error("다운로드가 완전하지 않습니다. 파일 크기가 일치하지 않습니다.");
+        }
       }
-    }
-    if (payload.expectedSize != null && payload.expectedSize !== buffer.length) {
-      throw new Error(
-        `파일 크기가 일치하지 않습니다 (예상 ${payload.expectedSize}, 실제 ${buffer.length}).`
-      );
-    }
+      if (payload.expectedSize != null && payload.expectedSize !== buffer.length) {
+        throw new Error(
+          `파일 크기가 일치하지 않습니다 (예상 ${payload.expectedSize}, 실제 ${buffer.length}).`
+        );
+      }
 
-    const { canceled, filePath } = await dialog.showSaveDialog({
-      defaultPath: payload.fileName,
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        defaultPath: payload.fileName,
+      });
+      if (canceled || !filePath) return null;
+      await writeFile(filePath, buffer);
+      return filePath;
+    }
+  );
+
+  ipcMain.handle("folder:pick", async (_event, defaultPath?: string): Promise<string | null> => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      properties: ["openDirectory"],
+      defaultPath: defaultPath?.trim() || undefined,
     });
-    if (canceled || !filePath) return null;
-    await writeFile(filePath, buffer);
-    return filePath;
-  }
-);
-
-ipcMain.handle("folder:pick", async (_event, defaultPath?: string): Promise<string | null> => {
-  const { canceled, filePaths } = await dialog.showOpenDialog({
-    properties: ["openDirectory"],
-    defaultPath: defaultPath?.trim() || undefined,
+    if (canceled || filePaths.length === 0) return null;
+    return filePaths[0] ?? null;
   });
-  if (canceled || filePaths.length === 0) return null;
-  return filePaths[0] ?? null;
-});
 
-/** 새 메시지/일정 알림 — 앱 비활성 시 트레이 위 토스트 (3초) */
-ipcMain.handle(
-  "notification:show",
-  (
-    event,
-    payload: {
-      title: string;
-      body: string;
-      target: NotificationTarget;
+  /** 새 메시지/일정 알림 — 앱 비활성 시 트레이 위 토스트 (3초) */
+  ipcMain.handle(
+    "notification:show",
+    (
+      event,
+      payload: {
+        title: string;
+        body: string;
+        target: NotificationTarget;
+      }
+    ): void => {
+      const win = BrowserWindow.fromWebContents(event.sender) ?? mainWindow;
+      handleBackgroundNotification(win, payload);
     }
-  ): void => {
-    const win = BrowserWindow.fromWebContents(event.sender) ?? mainWindow;
-    handleBackgroundNotification(win, payload);
-  }
-);
+  );
 
-/** DM /지진 — 창 복원 + 흔들림 후 해당 DM으로 이동 */
-ipcMain.handle(
-  "window:earthquake",
-  async (event, payload: { roomId: number }): Promise<void> => {
-    const win = BrowserWindow.fromWebContents(event.sender) ?? mainWindow;
-    if (!win) return;
-    await shakeWindow(win);
-    win.webContents.send("notification:navigate", { type: "room", roomId: payload.roomId });
-  }
-);
+  /** DM /지진 — 창 복원 + 흔들림 후 해당 DM으로 이동 */
+  ipcMain.handle(
+    "window:earthquake",
+    async (event, payload: { roomId: number }): Promise<void> => {
+      const win = BrowserWindow.fromWebContents(event.sender) ?? mainWindow;
+      if (!win) return;
+      await shakeWindow(win);
+      win.webContents.send("notification:navigate", { type: "room", roomId: payload.roomId });
+    }
+  );
+}
 
 app.whenReady().then(() => {
+  registerIpcHandlers();
   Menu.setApplicationMenu(null);
   const appIcon = loadAppIcon();
   if (!appIcon.isEmpty() && process.platform === "darwin") {

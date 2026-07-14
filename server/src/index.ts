@@ -14,10 +14,13 @@ import { yonaRouter } from "./routes/yona.js";
 import { jenkinsRouter } from "./routes/jenkins.js";
 import { integrationsRouter } from "./routes/integrations.js";
 import { calendarRouter } from "./routes/calendar.js";
+import { emojisRouter } from "./routes/emojis.js";
 import { startRagScheduler } from "./services/rag-scheduler.js";
 import { startCalendarReminderScheduler } from "./services/calendar-reminder.js";
+import { seedBuiltinEmojis } from "./services/emojis.js";
 
 initDb();
+void seedBuiltinEmojis();
 
 const app = express();
 app.use(cors({ origin: config.corsOrigin, credentials: true }));
@@ -35,6 +38,7 @@ app.use("/api/yona", yonaRouter);
 app.use("/api/jenkins", jenkinsRouter);
 app.use("/api/integrations", integrationsRouter);
 app.use("/api/calendar", calendarRouter);
+app.use("/api/emojis", emojisRouter);
 // 파일 라우트(/api/rooms/:id/files, /api/files/:id)와 Jenkins 웹훅(/api/webhooks/jenkins)
 app.use("/api", filesRouter);
 app.use("/api", jenkinsRouter);

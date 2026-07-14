@@ -1,6 +1,6 @@
 {
   "name": "intra-chat",
-  "version": "0.1.0",
+  "version": "0.4.5",
   "private": true,
   "description": "사내 인트라넷용 Slack형 채팅 프로그램 (Intra-Chat) PoC",
   "workspaces": [

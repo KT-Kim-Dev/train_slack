@@ -29,6 +29,7 @@ export function ChatRoom({ room, currentUser, users, integrations, registerActiv
     url: string;
     fileName: string;
     fileSize: number | null;
+    allowDownload?: boolean;
   } | null>(null);
   const [showIssueModal, setShowIssueModal] = useState(false);
   const [buildToConfirm, setBuildToConfirm] = useState<string | null>(null);
@@ -37,6 +38,7 @@ export function ChatRoom({ room, currentUser, users, integrations, registerActiv
   const [showGroupMembers, setShowGroupMembers] = useState(false);
   const [groupMembersAddMode, setGroupMembersAddMode] = useState(false);
   const [mentionUsers, setMentionUsers] = useState<PublicUser[]>([]);
+  const [replyTo, setReplyTo] = useState<Message | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const nearBottomRef = useRef(true);
 
@@ -76,6 +78,7 @@ export function ChatRoom({ room, currentUser, users, integrations, registerActiv
   useEffect(() => {
     let cancelled = false;
     setStreamingAiIds(new Set());
+    setReplyTo(null);
     void (async () => {
       const page = await fetchMessages(room.id);
       if (cancelled) return;
@@ -151,7 +154,7 @@ export function ChatRoom({ room, currentUser, users, integrations, registerActiv
    * 입력 전송 처리: 명령어를 파싱해 채팅/AI/Yona/Jenkins 로 라우팅한다.
    * 오류는 throw 하여 입력창에 표시된다.
    */
-  async function handleSubmit(raw: string): Promise<void> {
+  async function handleSubmit(raw: string, replyToMessageId?: number): Promise<void> {
     nearBottomRef.current = true;
     const parsed = parseMessageInput(raw, mentionUsers, room.type);
 
@@ -164,7 +167,8 @@ export function ChatRoom({ room, currentUser, users, integrations, registerActiv
 
     switch (parsed.type) {
       case "text":
-        await sendMessage(room.id, parsed.text, parsed.mentionUserIds);
+        await sendMessage(room.id, parsed.text, parsed.mentionUserIds, replyToMessageId);
+        setReplyTo(null);
         return;
       case "ai":
         await ensureAiEnabled();
@@ -296,6 +300,7 @@ export function ChatRoom({ room, currentUser, users, integrations, registerActiv
             aiFlowKind={aiFlowMap.get(m.id) ?? null}
             senderUser={resolveSenderUser(m.senderId)}
             onImageClick={setLightboxImage}
+            onReply={(message) => setReplyTo(message)}
           />
         ))}
         {messages.length === 0 && (
@@ -314,6 +319,8 @@ export function ChatRoom({ room, currentUser, users, integrations, registerActiv
         isChannelRoom={room.type === "channel"}
         isGroupRoom={room.type === "group"}
         mentionUsers={mentionUsers}
+        replyTo={replyTo}
+        onCancelReply={() => setReplyTo(null)}
         onSubmit={handleSubmit}
       />
 
@@ -322,6 +329,7 @@ export function ChatRoom({ room, currentUser, users, integrations, registerActiv
           url={lightboxImage.url}
           fileName={lightboxImage.fileName}
           fileSize={lightboxImage.fileSize}
+          allowDownload={lightboxImage.allowDownload}
           onClose={() => setLightboxImage(null)}
         />
       )}

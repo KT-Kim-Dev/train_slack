@@ -7,6 +7,7 @@ import type {
   CalendarEventInput,
   CreateIssueRequest,
   CreateIssueResponse,
+  EmojiItem,
   IntegrationsInfo,
   IssueCard,
   LoginResponse,
@@ -409,5 +410,42 @@ export function uploadFiles(
     });
     xhr.addEventListener("error", () => reject(new ApiError("네트워크 오류로 업로드에 실패했습니다.")));
     xhr.send(form);
+  });
+}
+
+export async function fetchEmojis(): Promise<EmojiItem[]> {
+  return request<EmojiItem[]>("/api/emojis");
+}
+
+export function emojiAssetUrl(relativeUrl: string): string {
+  return fileUrl(relativeUrl);
+}
+
+export async function uploadEmoji(file: File): Promise<EmojiItem> {
+  const form = new FormData();
+  form.append("emoji", file, file.name);
+  const token = getToken();
+  const res = await fetch(`${SERVER_URL}/api/emojis`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  if (!res.ok) {
+    let message = `업로드 실패 (${res.status})`;
+    try {
+      const body = await res.json();
+      if (body?.error) message = body.error;
+    } catch {
+      /* ignore */
+    }
+    throw new ApiError(message);
+  }
+  return res.json() as Promise<EmojiItem>;
+}
+
+export async function sendEmojiMessage(roomId: number, emojiId: string): Promise<Message> {
+  return request<Message>(`/api/emojis/rooms/${roomId}/send`, {
+    method: "POST",
+    body: JSON.stringify({ emojiId }),
   });
 }

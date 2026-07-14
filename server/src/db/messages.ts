@@ -1,4 +1,4 @@
-import type { CardPayload, Message, MessagePage, MessageType } from "@intra-chat/shared";
+import type { CardPayload, Message, MessageMetadata, MessagePage, MessageReplyPreview, MessageType } from "@intra-chat/shared";
 import { db } from "./index.js";
 
 export interface MessageRow {
@@ -12,14 +12,33 @@ export interface MessageRow {
   file_path: string | null;
   file_size: number | null;
   metadata: string | null;
+  parent_id: number | null;
   created_at: string;
+  parent_msg_id?: number | null;
+  parent_sender_id?: number | null;
+  parent_sender_name?: string | null;
+  parent_message_type?: MessageType | null;
+  parent_content?: string | null;
+  parent_file_name?: string | null;
+}
+
+function buildReplyPreview(row: MessageRow): MessageReplyPreview | null {
+  if (!row.parent_msg_id) return null;
+  return {
+    id: row.parent_msg_id,
+    senderId: row.parent_sender_id ?? 0,
+    senderName: row.parent_sender_name ?? "알 수 없음",
+    messageType: row.parent_message_type ?? "text",
+    content: row.parent_content ?? null,
+    fileName: row.parent_file_name ?? null,
+  };
 }
 
 function toMessage(row: MessageRow): Message {
-  let metadata: CardPayload | null = null;
+  let metadata: MessageMetadata | null = null;
   if (row.metadata) {
     try {
-      metadata = JSON.parse(row.metadata) as CardPayload;
+      metadata = JSON.parse(row.metadata) as MessageMetadata;
     } catch {
       metadata = null;
     }
@@ -32,18 +51,27 @@ function toMessage(row: MessageRow): Message {
     messageType: row.message_type,
     content: row.content,
     fileName: row.file_name,
-    // 파일이 있는 경우 다운로드/미리보기용 상대 URL 제공
     fileUrl: row.file_path ? `/api/files/${row.id}` : null,
     fileSize: row.file_size,
     metadata,
+    parentMessageId: row.parent_id,
+    replyTo: buildReplyPreview(row),
     createdAt: row.created_at,
   };
 }
 
 const SELECT_WITH_SENDER = `
-  SELECT m.*, u.display_name AS sender_name
+  SELECT m.*, u.display_name AS sender_name,
+    pm.id AS parent_msg_id,
+    pm.sender_id AS parent_sender_id,
+    pu.display_name AS parent_sender_name,
+    pm.message_type AS parent_message_type,
+    pm.content AS parent_content,
+    pm.file_name AS parent_file_name
   FROM messages m
   LEFT JOIN users u ON u.id = m.sender_id
+  LEFT JOIN messages pm ON pm.id = m.parent_id
+  LEFT JOIN users pu ON pu.id = pm.sender_id
 `;
 
 export function getMessageById(id: number): Message | undefined {
@@ -53,17 +81,32 @@ export function getMessageById(id: number): Message | undefined {
   return row ? toMessage(row) : undefined;
 }
 
-/** 파일 다운로드용으로 원시 파일 경로/메타를 조회 */
+/** 같은 방의 메시지인지 확인 (대댓글용) */
+export function getMessageInRoom(messageId: number, roomId: number): Message | undefined {
+  const row = db
+    .prepare(`${SELECT_WITH_SENDER} WHERE m.id = ? AND m.room_id = ?`)
+    .get(messageId, roomId) as MessageRow | undefined;
+  return row ? toMessage(row) : undefined;
+}
+
 export function getFileMeta(
   messageId: number
-): { filePath: string; fileName: string; messageType: MessageType } | undefined {
+): { filePath: string; fileName: string; messageType: MessageType; metadata: MessageMetadata | null } | undefined {
   const row = db
-    .prepare("SELECT file_path, file_name, message_type FROM messages WHERE id = ?")
+    .prepare("SELECT file_path, file_name, message_type, metadata FROM messages WHERE id = ?")
     .get(messageId) as
-    | { file_path: string | null; file_name: string | null; message_type: MessageType }
+    | { file_path: string | null; file_name: string | null; message_type: MessageType; metadata: string | null }
     | undefined;
   if (!row || !row.file_path || !row.file_name) return undefined;
-  return { filePath: row.file_path, fileName: row.file_name, messageType: row.message_type };
+  let metadata: MessageMetadata | null = null;
+  if (row.metadata) {
+    try {
+      metadata = JSON.parse(row.metadata) as MessageMetadata;
+    } catch {
+      metadata = null;
+    }
+  }
+  return { filePath: row.file_path, fileName: row.file_name, messageType: row.message_type, metadata };
 }
 
 /** 그룹채팅 멤버 입·퇴장 시스템 메시지 */
@@ -162,12 +205,13 @@ export function insertTextMessage(params: {
   roomId: number;
   senderId: number;
   content: string;
+  parentMessageId?: number | null;
 }): Message {
   const result = db
     .prepare(
-      "INSERT INTO messages (room_id, sender_id, message_type, content) VALUES (?, ?, 'text', ?)"
+      "INSERT INTO messages (room_id, sender_id, message_type, content, parent_id) VALUES (?, ?, 'text', ?, ?)"
     )
-    .run(params.roomId, params.senderId, params.content);
+    .run(params.roomId, params.senderId, params.content, params.parentMessageId ?? null);
   return getMessageById(Number(result.lastInsertRowid))!;
 }
 
@@ -178,11 +222,13 @@ export function insertFileMessage(params: {
   fileName: string;
   filePath: string;
   fileSize: number;
+  parentMessageId?: number | null;
+  metadata?: MessageMetadata | null;
 }): Message {
   const result = db
     .prepare(
-      `INSERT INTO messages (room_id, sender_id, message_type, file_name, file_path, file_size)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO messages (room_id, sender_id, message_type, file_name, file_path, file_size, parent_id, metadata)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       params.roomId,
@@ -190,7 +236,9 @@ export function insertFileMessage(params: {
       params.messageType,
       params.fileName,
       params.filePath,
-      params.fileSize
+      params.fileSize,
+      params.parentMessageId ?? null,
+      params.metadata ? JSON.stringify(params.metadata) : null
     );
   return getMessageById(Number(result.lastInsertRowid))!;
 }

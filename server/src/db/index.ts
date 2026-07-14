@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS messages (
   file_path    TEXT,
   file_size    INTEGER,
   metadata     TEXT,
+  parent_id    INTEGER REFERENCES messages(id) ON DELETE SET NULL,
   created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
@@ -284,6 +285,14 @@ function runMigrations(): void {
     db.exec(
       "ALTER TABLE calendar_events ADD COLUMN color TEXT NOT NULL DEFAULT '#1a73e8'"
     );
+  }
+
+  const messageCols = db.prepare("PRAGMA table_info(messages)").all() as { name: string }[];
+  const messageColNames = new Set(messageCols.map((c) => c.name));
+  if (!messageColNames.has("parent_id")) {
+    logger.info("DB 마이그레이션: messages.parent_id 추가");
+    db.exec("ALTER TABLE messages ADD COLUMN parent_id INTEGER REFERENCES messages(id) ON DELETE SET NULL");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_messages_parent ON messages (parent_id)");
   }
 }
 

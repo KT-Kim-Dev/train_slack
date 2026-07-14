@@ -25,6 +25,10 @@ export const config = {
   avatarsDir: ensureDir(
     resolveFromRoot(path.join(process.env.UPLOAD_DIR ?? "./uploads", "avatars"))
   ),
+  emojisBuiltinDir: ensureDir(resolveFromRoot(process.env.EMOJIS_BUILTIN_DIR ?? "./emojis/builtin")),
+  emojisCustomDir: ensureDir(
+    resolveFromRoot(path.join(process.env.UPLOAD_DIR ?? "./uploads", "emojis"))
+  ),
   logDir: ensureDir(resolveFromRoot("./logs")),
   maxFileSize: Number(process.env.MAX_FILE_SIZE ?? 1024 * 1024 * 1024),
   corsOrigin: (process.env.CORS_ORIGIN ?? "http://localhost:5173")

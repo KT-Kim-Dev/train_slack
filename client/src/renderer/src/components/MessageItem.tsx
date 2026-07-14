@@ -1,9 +1,11 @@
 import { useState } from "react";
 import type { BuildCard, IssueCard, Message, PublicUser, ScheduleCard } from "@intra-chat/shared";
+import { isEmojiMessage } from "@intra-chat/shared";
 import { fileUrl } from "../api";
 import { MessageContent } from "./MessageContent";
 import { UserAvatar } from "./UserAvatar";
 import type { AiFlowKind } from "../utils/aiMessageFlow";
+import { replyPreviewText } from "../utils/replyPreview";
 
 interface Props {
   message: Message;
@@ -11,7 +13,13 @@ interface Props {
   isAiStreaming?: boolean;
   aiFlowKind?: AiFlowKind | null;
   senderUser?: Pick<PublicUser, "id" | "displayName" | "profileImageUrl">;
-  onImageClick: (payload: { url: string; fileName: string; fileSize: number | null }) => void;
+  onImageClick: (payload: {
+    url: string;
+    fileName: string;
+    fileSize: number | null;
+    allowDownload?: boolean;
+  }) => void;
+  onReply?: (message: Message) => void;
 }
 
 function formatTime(iso: string): string {
@@ -43,9 +51,11 @@ export function MessageItem({
   aiFlowKind = null,
   senderUser,
   onImageClick,
+  onReply,
 }: Props): JSX.Element {
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const isEmoji = isEmojiMessage(message);
   const url = message.fileUrl ? fileUrl(message.fileUrl) : null;
 
   async function handleDownload(): Promise<void> {
@@ -110,6 +120,12 @@ export function MessageItem({
         <UserAvatar user={resolvedSender} size={36} className="message-user-avatar" />
       )}
       <div className="message-body">
+        {message.replyTo && (
+          <div className="message-reply-quote">
+            <span className="message-reply-author">{message.replyTo.senderName}</span>
+            <span className="message-reply-snippet">{replyPreviewText(message.replyTo)}</span>
+          </div>
+        )}
         <div className="message-meta">
           {isAiQuestion ? (
             <AiFlowLabel from={askerName} to="AI" />
@@ -119,6 +135,11 @@ export function MessageItem({
             <span className="message-sender">{message.senderName}</span>
           )}
           <span className="message-time">{formatTime(message.createdAt)}</span>
+          {!isSystem && !isAi && onReply && (
+            <button type="button" className="message-reply-btn" onClick={() => onReply(message)}>
+              답글
+            </button>
+          )}
         </div>
 
         {message.messageType === "text" && (
@@ -155,33 +176,40 @@ export function MessageItem({
         )}
 
         {message.messageType === "image" && url && (
-          <div className="message-image">
+          <div className={`message-image ${isEmoji ? "message-emoji" : ""}`}>
             <img
               src={url}
-              alt={message.fileName ?? "image"}
+              alt={isEmoji ? "이모티콘" : (message.fileName ?? "image")}
+              draggable={false}
+              onContextMenu={isEmoji ? (e) => e.preventDefault() : undefined}
               onClick={() =>
                 onImageClick({
                   url,
                   fileName: message.fileName ?? `image-${message.id}.jpg`,
                   fileSize: message.fileSize,
+                  allowDownload: !isEmoji,
                 })
               }
               loading="lazy"
             />
-            <div className="message-image-actions">
-              <span className="file-caption">
-                {message.fileName} · {formatSize(message.fileSize)}
-              </span>
-              <button
-                type="button"
-                className="image-download-btn"
-                onClick={() => void handleDownload()}
-                disabled={downloading}
-              >
-                {downloading ? "저장 중..." : "다운로드"}
-              </button>
-            </div>
-            {downloadError && <div className="file-download-error">{downloadError}</div>}
+            {!isEmoji && (
+              <>
+                <div className="message-image-actions">
+                  <span className="file-caption">
+                    {message.fileName} · {formatSize(message.fileSize)}
+                  </span>
+                  <button
+                    type="button"
+                    className="image-download-btn"
+                    onClick={() => void handleDownload()}
+                    disabled={downloading}
+                  >
+                    {downloading ? "저장 중..." : "다운로드"}
+                  </button>
+                </div>
+                {downloadError && <div className="file-download-error">{downloadError}</div>}
+              </>
+            )}
           </div>
         )}
 

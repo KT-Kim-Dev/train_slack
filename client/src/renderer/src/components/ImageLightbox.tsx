@@ -4,11 +4,18 @@ interface Props {
   url: string;
   fileName: string;
   fileSize?: number | null;
+  allowDownload?: boolean;
   onClose: () => void;
 }
 
 /** 이미지 원본 크기 보기 + 다운로드 (FR-21, FR-22) */
-export function ImageLightbox({ url, fileName, fileSize = null, onClose }: Props): JSX.Element {
+export function ImageLightbox({
+  url,
+  fileName,
+  fileSize = null,
+  allowDownload = true,
+  onClose,
+}: Props): JSX.Element {
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
@@ -37,17 +44,25 @@ export function ImageLightbox({ url, fileName, fileSize = null, onClose }: Props
   return (
     <div className="lightbox-backdrop" onClick={onClose}>
       <div className="lightbox-panel" onClick={(e) => e.stopPropagation()}>
-        <img className="lightbox-img" src={url} alt={fileName} />
+        <img
+          className="lightbox-img"
+          src={url}
+          alt={fileName}
+          draggable={false}
+          onContextMenu={allowDownload ? undefined : (e) => e.preventDefault()}
+        />
         <div className="lightbox-toolbar">
-          <span className="lightbox-filename">{fileName}</span>
-          <button
-            type="button"
-            className="lightbox-download-btn"
-            onClick={() => void handleDownload()}
-            disabled={downloading}
-          >
-            {downloading ? "저장 중..." : "다운로드"}
-          </button>
+          <span className="lightbox-filename">{allowDownload ? fileName : "이모티콘"}</span>
+          {allowDownload && (
+            <button
+              type="button"
+              className="lightbox-download-btn"
+              onClick={() => void handleDownload()}
+              disabled={downloading}
+            >
+              {downloading ? "저장 중..." : "다운로드"}
+            </button>
+          )}
         </div>
         {downloadError && <div className="lightbox-download-error">{downloadError}</div>}
       </div>

@@ -86,10 +86,17 @@ function buildToastHtml(title: string, body: string): string {
 </html>`;
 }
 
-ipcMain.on("tray-toast:click", () => {
-  clickHandler?.();
-  hideTrayToast();
-});
+let ipcRegistered = false;
+
+/** ipcMain은 app ready 이후에만 사용 가능 (Electron 33+) */
+export function registerTrayToastIpc(): void {
+  if (ipcRegistered) return;
+  ipcRegistered = true;
+  ipcMain.on("tray-toast:click", () => {
+    clickHandler?.();
+    hideTrayToast();
+  });
+}
 
 /** 시스템 트레이 근처(화면 우하단)에 3초간 표시되는 토스트 */
 export function showTrayToast(

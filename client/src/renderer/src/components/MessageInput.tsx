@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from "react";
-import type { PublicUser } from "@intra-chat/shared";
-import { uploadFiles } from "../api";
+import type { Message, PublicUser } from "@intra-chat/shared";
+import { sendEmojiMessage, uploadFiles } from "../api";
 import {
   AI_COMMAND_HINTS,
   CHANNEL_COMMAND_HINTS,
@@ -9,6 +9,8 @@ import {
   GROUP_COMMAND_HINTS,
 } from "../commands";
 import { detectMentionQuery, filterMentionCandidates } from "../utils/mentions";
+import { replyPreviewTextFromMessage } from "../utils/replyPreview";
+import { EmojiPicker } from "./EmojiPicker";
 
 const TEXTAREA_MAX_HEIGHT = 320;
 const TEXTAREA_MIN_HEIGHT = 44;
@@ -20,7 +22,9 @@ interface Props {
   isChannelRoom?: boolean;
   isGroupRoom?: boolean;
   mentionUsers?: PublicUser[];
-  onSubmit: (raw: string) => Promise<void>;
+  replyTo?: Message | null;
+  onCancelReply?: () => void;
+  onSubmit: (raw: string, replyToMessageId?: number) => Promise<void>;
 }
 
 export function MessageInput({
@@ -30,11 +34,14 @@ export function MessageInput({
   isChannelRoom = false,
   isGroupRoom = false,
   mentionUsers = [],
+  replyTo = null,
+  onCancelReply,
   onSubmit,
 }: Props): JSX.Element {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
   const [uploadPercent, setUploadPercent] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mentionOpen, setMentionOpen] = useState(false);
@@ -97,8 +104,9 @@ export function MessageInput({
     setError(null);
     setMentionOpen(false);
     try {
-      await onSubmit(trimmed);
+      await onSubmit(trimmed, replyTo?.id);
       setText("");
+      onCancelReply?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "전송 실패");
     } finally {
@@ -199,6 +207,18 @@ export function MessageInput({
         </div>
       )}
       {error && <div className="input-error">{error}</div>}
+      {replyTo && (
+        <div className="reply-compose-bar">
+          <div className="reply-compose-text">
+            <span className="reply-compose-label">답글</span>
+            <span className="reply-compose-target">{replyTo.senderName}</span>
+            <span className="reply-compose-snippet">{replyPreviewTextFromMessage(replyTo)}</span>
+          </div>
+          <button type="button" className="reply-compose-cancel" onClick={onCancelReply} aria-label="답글 취소">
+            ×
+          </button>
+        </div>
+      )}
       {dragging && (
         <div className="drop-hint">
           {isAiRoom ? "txt, md, doc 파일을 여기에 놓아 RAG에 반영" : "여기에 파일을 놓아 전송"}
@@ -213,6 +233,29 @@ export function MessageInput({
         >
           +
         </button>
+        {!isAiRoom && (
+          <div className="emoji-btn-wrap">
+            <button
+              type="button"
+              className={`attach-btn emoji-btn ${emojiOpen ? "active" : ""}`}
+              title="이모티콘"
+              onClick={() => setEmojiOpen((open) => !open)}
+            >
+              ☺
+            </button>
+            <EmojiPicker
+              open={emojiOpen}
+              onClose={() => setEmojiOpen(false)}
+              onSelect={(emoji) => {
+                setError(null);
+                setSending(true);
+                void sendEmojiMessage(roomId, emoji.id)
+                  .catch((err) => setError(err instanceof Error ? err.message : "이모티콘 전송 실패"))
+                  .finally(() => setSending(false));
+              }}
+            />
+          </div>
+        )}
         <input
           ref={fileInputRef}
           type="file"

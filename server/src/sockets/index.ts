@@ -17,6 +17,7 @@ import {
   insertEarthquakeSystemMessage,
   insertMassEarthquakeSystemMessage,
   insertTargetedEarthquakeSystemMessage,
+  getMessageInRoom,
   insertTextMessage,
   setMessageContent,
 } from "../db/messages.js";
@@ -193,7 +194,7 @@ export function initSocket(httpServer: HttpServer, corsOrigin: string[]): IOServ
       socket.leave(roomChannel(roomId));
     });
 
-    socket.on("message:send", ({ roomId, content, mentionUserIds }, ack) => {
+    socket.on("message:send", ({ roomId, content, mentionUserIds, replyToMessageId }, ack) => {
       const trimmed = (content ?? "").trim();
       if (!trimmed) {
         ack?.({ ok: false, error: "빈 메시지는 보낼 수 없습니다." });
@@ -203,7 +204,27 @@ export function initSocket(httpServer: HttpServer, corsOrigin: string[]): IOServ
         ack?.({ ok: false, error: "이 방의 참여자가 아닙니다." });
         return;
       }
-      const message = insertTextMessage({ roomId, senderId: userId, content: trimmed });
+
+      let parentMessageId: number | null = null;
+      if (replyToMessageId != null) {
+        const parent = getMessageInRoom(replyToMessageId, roomId);
+        if (!parent) {
+          ack?.({ ok: false, error: "답글 대상 메시지를 찾을 수 없습니다." });
+          return;
+        }
+        if (parent.messageType === "system") {
+          ack?.({ ok: false, error: "시스템 메시지에는 답글할 수 없습니다." });
+          return;
+        }
+        parentMessageId = parent.id;
+      }
+
+      const message = insertTextMessage({
+        roomId,
+        senderId: userId,
+        content: trimmed,
+        parentMessageId,
+      });
       markRoomRead(roomId, userId, message.id);
       broadcastMessage(message);
       scheduleRoomConversationExport(roomId);

@@ -67,6 +67,20 @@ async function copyRuntimeTree(destAppDir, includeNodeExe, destRoot) {
   }
 }
 
+async function copyEmojiResources(appDir) {
+  const resourceDir = path.join(ROOT, "resource");
+  if (!fs.existsSync(resourceDir)) return;
+  const dest = path.join(appDir, "emojis", "builtin");
+  await fsp.mkdir(dest, { recursive: true });
+  const entries = await fsp.readdir(resourceDir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    const ext = path.extname(entry.name).toLowerCase();
+    if (![".gif", ".jpg", ".jpeg", ".png", ".webp"].includes(ext)) continue;
+    await fsp.copyFile(path.join(resourceDir, entry.name), path.join(dest, entry.name));
+  }
+}
+
 async function assembleFullPackage() {
   const outDir = path.join(RELEASE_DIR, FULL_NAME);
   await fsp.rm(outDir, { recursive: true, force: true });
@@ -76,6 +90,7 @@ async function assembleFullPackage() {
   await fsp.mkdir(path.join(appDir, "logs"), { recursive: true });
 
   await copyRuntimeTree(appDir, true, outDir);
+  await copyEmojiResources(appDir);
   await copyTemplate(ROOT, "start-server.bat", path.join(outDir, "start-server.bat"));
   await copyTemplate(ROOT, "create-user.bat", path.join(outDir, "create-user.bat"));
   await copyTemplate(ROOT, "SERVER-README.txt", path.join(outDir, "README.txt"));
@@ -91,6 +106,7 @@ async function assembleUpdatePackage() {
   await fsp.mkdir(appDir, { recursive: true });
 
   await copyRuntimeTree(appDir, true, outDir);
+  await copyEmojiResources(appDir);
   await copyTemplate(ROOT, "update-server.bat", path.join(outDir, "update-server.bat"));
   await copyTemplate(ROOT, "start-server.bat", path.join(outDir, "start-server.bat"));
   await copyTemplate(ROOT, "create-user.bat", path.join(outDir, "create-user.bat"));

@@ -127,9 +127,32 @@ export interface Message {
   /** 다운로드/미리보기용 상대 경로 (예: /api/files/123) */
   fileUrl: string | null;
   fileSize: number | null;
-  /** 카드 메시지(이슈/빌드)의 구조화 데이터 (message_type='card') */
-  metadata: CardPayload | null;
+  /** 카드·이모티콘 등 구조화 메타데이터 */
+  metadata: MessageMetadata | null;
+  /** 대댓글 대상 메시지 id */
+  parentMessageId: number | null;
+  /** 대댓글 미리보기용 원본 메시지 요약 */
+  replyTo: MessageReplyPreview | null;
   createdAt: string;
+}
+
+/** 대댓글 UI에 표시할 원본 메시지 요약 */
+export interface MessageReplyPreview {
+  id: number;
+  senderId: number;
+  senderName: string;
+  messageType: MessageType;
+  content: string | null;
+  fileName: string | null;
+}
+
+/** 채팅 이모티콘 (builtin: 기본 제공, custom: 사용자 업로드) */
+export interface EmojiItem {
+  id: string;
+  fileName: string;
+  category: "builtin" | "custom";
+  url: string;
+  uploadedBy: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -181,6 +204,17 @@ export interface ScheduleCard {
 }
 
 export type CardPayload = IssueCard | BuildCard | ScheduleCard;
+
+/** 채팅 이모티콘 메시지 메타 (다운로드 불가) */
+export interface EmojiMessageMeta {
+  kind: "emoji";
+}
+
+export type MessageMetadata = CardPayload | EmojiMessageMeta;
+
+export function isEmojiMessage(message: Pick<Message, "metadata">): boolean {
+  return message.metadata != null && "kind" in message.metadata && message.metadata.kind === "emoji";
+}
 
 // ---------------------------------------------------------------------------
 // 캘린더 일정
@@ -360,7 +394,12 @@ export interface ClientToServerEvents {
   "room:join": (roomId: number, ack?: (ok: boolean) => void) => void;
   "room:leave": (roomId: number) => void;
   "message:send": (
-    payload: { roomId: number; content: string; mentionUserIds?: number[] },
+    payload: {
+      roomId: number;
+      content: string;
+      mentionUserIds?: number[];
+      replyToMessageId?: number;
+    },
     ack?: (result: { ok: boolean; message?: Message; error?: string }) => void
   ) => void;
   /** AI 질문 요청 (FR-28, FR-29): 서버가 질문을 저장/브로드캐스트 후 스트리밍 응답 */
