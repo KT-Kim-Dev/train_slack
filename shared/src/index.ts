@@ -34,6 +34,16 @@ export interface PublicUser {
   presenceStatus: UserPresenceStatus;
 }
 
+/** 본인 설정 (GET/PATCH /api/users/me/preferences) */
+export interface UserPreferences {
+  /** true면 /지진 수신 시 창 흔들림 무시 */
+  ignoreEarthquake: boolean;
+}
+
+export const DEFAULT_USER_PREFERENCES: UserPreferences = {
+  ignoreEarthquake: false,
+};
+
 export type AiReplyLanguage = "ko" | "en" | "auto";
 
 /** 관리자 UI에서 편집하는 통합 연동 설정 */
@@ -195,10 +205,14 @@ export interface ScheduleCardItem {
 /** 채팅방 일정 조회 카드 (/calendar) 및 참석 변경 DM 알림 */
 export interface ScheduleCard {
   kind: "schedule";
-  /** 조회 대상 날짜 YYYY-MM-DD (로컬) */
+  /** 조회 기준 날짜 YYYY-MM-DD (로컬) */
   date: string;
   label: string;
   events: ScheduleCardItem[];
+  /** day: 하루, month30: 오늘~+30일 */
+  rangeKind?: "day" | "month30";
+  /** month30 조회 시 종료일 YYYY-MM-DD (포함) */
+  rangeEnd?: string;
   /** DM 참석자 변경 알림: 추가/삭제 */
   notice?: "added" | "removed";
 }

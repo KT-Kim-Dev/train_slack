@@ -11,7 +11,9 @@ import {
   deleteEvent,
   eventParticipantIds,
   getEventById,
+  listEventsForNext30Days,
   listEventsForUser,
+  listEventsTouchingLocalDay,
   updateEvent,
 } from "../db/calendar.js";
 import { isMember } from "../db/rooms.js";
@@ -65,6 +67,19 @@ function toEventInput(data: z.infer<typeof eventInputSchema>): CalendarEventInpu
   };
 }
 
+function toScheduleCardItems(events: ReturnType<typeof listEventsForUser>) {
+  return events.map((e) => ({
+    id: e.id,
+    title: e.title,
+    startAt: e.startAt,
+    endAt: e.endAt,
+    allDay: e.allDay,
+    location: e.location,
+    creatorName: e.creatorName,
+    attendeeNames: e.attendees.map((a) => a.displayName),
+  }));
+}
+
 /** 기간 내 일정 목록 (scope=mine|all) */
 calendarRouter.get("/events", (req: AuthedRequest, res) => {
   const from = typeof req.query.from === "string" ? req.query.from : "";
@@ -111,10 +126,9 @@ calendarRouter.get("/schedule", (req: AuthedRequest, res) => {
     return;
   }
 
-  const events = listEventsForUser({
+  const events = listEventsTouchingLocalDay({
     userId: req.auth!.userId,
-    from,
-    to,
+    ymd: date,
     scope,
   });
 
@@ -124,16 +138,8 @@ calendarRouter.get("/schedule", (req: AuthedRequest, res) => {
     kind: "schedule",
     date,
     label,
-    events: events.map((e) => ({
-      id: e.id,
-      title: e.title,
-      startAt: e.startAt,
-      endAt: e.endAt,
-      allDay: e.allDay,
-      location: e.location,
-      creatorName: e.creatorName,
-      attendeeNames: e.attendees.map((a) => a.displayName),
-    })),
+    rangeKind: "day",
+    events: toScheduleCardItems(events),
   };
 
   const msg = insertCardMessage({
@@ -152,6 +158,51 @@ calendarRouter.get("/schedule", (req: AuthedRequest, res) => {
     elapsedMs: Date.now() - startedAt,
   });
   logger.info("캘린더 일정 조회 카드 게시", { roomId, date, count: events.length });
+  res.json(card);
+});
+
+/** 오늘~+30일 일정 조회 후 채팅방에 카드 게시 (/한달일정) */
+calendarRouter.get("/schedule/month30", (req: AuthedRequest, res) => {
+  const roomId = req.query.roomId ? Number(req.query.roomId) : null;
+  const scope = req.query.scope === "mine" ? "mine" : "all";
+  const startedAt = Date.now();
+
+  if (!roomId || !isMember(roomId, req.auth!.userId)) {
+    res.status(403).json({ error: "이 방에 접근할 수 없습니다." });
+    return;
+  }
+
+  const { events, fromDate, toDate } = listEventsForNext30Days({
+    userId: req.auth!.userId,
+    scope,
+  });
+
+  const label = `한달 일정 (${fromDate} ~ ${toDate})`;
+  const card: ScheduleCard = {
+    kind: "schedule",
+    date: fromDate,
+    label,
+    rangeKind: "month30",
+    rangeEnd: toDate,
+    events: toScheduleCardItems(events),
+  };
+
+  const msg = insertCardMessage({
+    roomId,
+    senderId: req.auth!.userId,
+    card,
+    content: events.length === 0 ? `${label}: 없음` : `${label} ${events.length}건`,
+  });
+  broadcastMessage(msg);
+
+  logCommand({
+    userId: req.auth!.userId,
+    command: "/한달일정",
+    parameter: `${fromDate}~${toDate}`,
+    success: true,
+    elapsedMs: Date.now() - startedAt,
+  });
+  logger.info("한달 일정 조회 카드 게시", { roomId, fromDate, toDate, count: events.length });
   res.json(card);
 });
 

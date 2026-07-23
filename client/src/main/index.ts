@@ -202,6 +202,11 @@ function createWindow(): void {
   mainWindow.on("show", () => {
     if (process.platform === "win32") mainWindow?.setSkipTaskbar(false);
     if (process.platform === "darwin") app.dock?.show();
+    mainWindow?.flashFrame(false);
+  });
+
+  mainWindow.on("focus", () => {
+    mainWindow?.flashFrame(false);
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -218,21 +223,23 @@ function createWindow(): void {
   }
 }
 
-function shouldShowTrayToast(win: BrowserWindow | null | undefined): boolean {
-  if (!win) return true;
-  return !win.isFocused() || !win.isVisible() || win.isMinimized();
-}
-
 function handleBackgroundNotification(
   win: BrowserWindow | null | undefined,
   payload: { title: string; body: string; target: NotificationTarget }
 ): void {
-  if (!shouldShowTrayToast(win)) return;
+  const inBackground =
+    !win || !win.isFocused() || win.isMinimized() || !win.isVisible();
 
-  showTrayToast({ title: payload.title, body: payload.body }, () => {
-    showMainWindow();
-    win?.webContents.send("notification:navigate", payload.target);
-  });
+  if (inBackground) {
+    win?.flashFrame(true);
+    showTrayToast({ title: payload.title, body: payload.body }, () => {
+      showMainWindow();
+      if (win && !win.isDestroyed()) {
+        win.flashFrame(false);
+      }
+      win?.webContents.send("notification:navigate", payload.target);
+    });
+  }
 }
 
 function registerIpcHandlers(): void {
@@ -330,6 +337,24 @@ function registerIpcHandlers(): void {
       win.webContents.send("notification:navigate", { type: "room", roomId: payload.roomId });
     }
   );
+
+  /** 일정 리마인더 — 창 복원 + 흔들림 후 캘린더 일정으로 이동 */
+  ipcMain.handle(
+    "window:reminder-shake",
+    async (event, payload: { eventId: number }): Promise<void> => {
+      const win = BrowserWindow.fromWebContents(event.sender) ?? mainWindow;
+      if (!win) return;
+      await shakeWindow(win);
+      win.webContents.send("notification:navigate", {
+        type: "calendar",
+        eventId: payload.eventId,
+      });
+    }
+  );
+
+  ipcMain.handle("shell:open-external", async (_event, url: string): Promise<void> => {
+    await shell.openExternal(url);
+  });
 }
 
 app.whenReady().then(() => {

@@ -29,6 +29,9 @@ const api = {
   /** DM /지진 수신 — 창 복원 + 흔들림 */
   earthquakeShake: (payload: { roomId: number }): Promise<void> =>
     ipcRenderer.invoke("window:earthquake", payload),
+  /** 일정 리마인더 — 창 복원 + 흔들림 후 해당 일정으로 이동 */
+  reminderShake: (payload: { eventId: number }): Promise<void> =>
+    ipcRenderer.invoke("window:reminder-shake", payload),
   /** 알림 클릭 시 방/캘린더 이동 */
   onNotificationNavigate: (
     callback: (target: NotificationNavTarget) => void
@@ -44,6 +47,8 @@ const api = {
       ipcRenderer.removeListener("notification:navigate", listener);
     };
   },
+  /** 외부 링크를 기본 브라우저에서 연다 */
+  openExternalUrl: (url: string): Promise<void> => ipcRenderer.invoke("shell:open-external", url),
 };
 
 contextBridge.exposeInMainWorld("intraChat", api);

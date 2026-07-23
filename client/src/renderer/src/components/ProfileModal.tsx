@@ -1,7 +1,7 @@
-import { useRef, useState } from "react";
-import type { PublicUser, UserPresenceStatus } from "@intra-chat/shared";
-import { PRESENCE_STATUS_LABELS } from "@intra-chat/shared";
-import { updateMyStatus, uploadAvatar } from "../api";
+import { useEffect, useRef, useState } from "react";
+import type { PublicUser, UserPresenceStatus, UserPreferences } from "@intra-chat/shared";
+import { DEFAULT_USER_PREFERENCES, PRESENCE_STATUS_LABELS } from "@intra-chat/shared";
+import { fetchMyPreferences, updateMyPreferences, updateMyStatus, uploadAvatar } from "../api";
 import { AvatarCropModal } from "./AvatarCropModal";
 import { UserAvatar } from "./UserAvatar";
 
@@ -16,11 +16,32 @@ interface Props {
 
 export function ProfileModal({ user, onClose, onUpdated }: Props): JSX.Element {
   const [current, setCurrent] = useState(user);
+  const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_USER_PREFERENCES);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [avatarBust, setAvatarBust] = useState(() => Date.now());
   const [cropSource, setCropSource] = useState<{ url: string; fileName: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    void fetchMyPreferences()
+      .then(setPreferences)
+      .catch(() => undefined);
+  }, []);
+
+  async function handleIgnoreEarthquakeChange(checked: boolean): Promise<void> {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const updated = await updateMyPreferences({ ignoreEarthquake: checked });
+      setPreferences(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "설정 변경에 실패했습니다.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function handleStatusChange(status: UserPresenceStatus): Promise<void> {
     if (status === current.presenceStatus || busy) return;
@@ -109,6 +130,22 @@ export function ProfileModal({ user, onClose, onUpdated }: Props): JSX.Element {
               />
               <p className="profile-upload-hint">최대 5MB · 업로드 후 영역을 지정할 수 있습니다</p>
             </div>
+          </div>
+
+          <div className="profile-section">
+            <div className="profile-section-title">내 설정</div>
+            <label className="preference-toggle">
+              <input
+                type="checkbox"
+                checked={preferences.ignoreEarthquake}
+                disabled={busy}
+                onChange={(e) => void handleIgnoreEarthquakeChange(e.target.checked)}
+              />
+              <span>지진 발생 무시</span>
+            </label>
+            <p className="profile-upload-hint">
+              켜면 /지진·/전체지진 수신 시 창이 흔들리지 않고, 무시 메시지가 표시됩니다.
+            </p>
           </div>
 
           <div className="profile-section">

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { PublicUser, Room } from "@intra-chat/shared";
 import { PRESENCE_STATUS_LABELS } from "@intra-chat/shared";
 import { createDm, leaveRoom } from "../api";
+import { QUICK_LINKS } from "../constants/quickLinks";
 import { sortUsers } from "../utils/sortUsers";
 import { NewRoomModal } from "./NewRoomModal";
 import { AdminSettingsModal } from "./AdminSettingsModal";
@@ -104,6 +105,10 @@ export function Sidebar({
     await onRoomsChanged();
   }
 
+  function openQuickLink(url: string): void {
+    void window.intraChat?.openExternalUrl?.(url);
+  }
+
   function renderRoomItem(room: Room, label: string, prefix: string): JSX.Element {
     const active = activeView === "chat" && room.id === selectedRoomId;
     const unread = room.unreadCount ?? 0;
@@ -176,6 +181,12 @@ export function Sidebar({
           </ul>
         </div>
 
+        <Section
+          title="채널"
+          onAdd={() => setModalType("channel")}
+          items={channels.map((r) => renderRoomItem(r, r.name, "# "))}
+        />
+
         <Section title="AI" items={aiRooms.map((r) => renderRoomItem(r, r.name, "🤖 "))} />
 
         <div className="section">
@@ -188,11 +199,6 @@ export function Sidebar({
           </ul>
         </div>
 
-        <Section
-          title="채널"
-          onAdd={() => setModalType("channel")}
-          items={channels.map((r) => renderRoomItem(r, r.name, "# "))}
-        />
         <Section
           title="그룹채팅"
           onAdd={() => setModalType("group")}
@@ -222,6 +228,21 @@ export function Sidebar({
             ))}
           </ul>
         )}
+
+        <div className="section">
+          <div className="section-header">
+            <span>링크</span>
+          </div>
+          <ul className="room-list">
+            {QUICK_LINKS.map((link) => (
+              <li key={link.url} className="room-item">
+                <button type="button" className="room-btn" onClick={() => openQuickLink(link.url)}>
+                  <span className="room-name">🔗 {link.title}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
 
       <div className="sidebar-footer">

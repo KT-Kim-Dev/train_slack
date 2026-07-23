@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AiDeltaEvent, IntegrationsInfo, Message, PublicUser, Room } from "@intra-chat/shared";
-import { fetchBuildStatus, fetchIntegrations, fetchIssue, fetchMessages, fetchRagFileList, fetchRoomMembers, fetchScheduleForRoom, markRoomRead } from "../api";
+import { fetchBuildStatus, fetchIntegrations, fetchIssue, fetchMessages, fetchMonthScheduleForRoom, fetchRagFileList, fetchRoomMembers, fetchScheduleForRoom, markRoomRead } from "../api";
 import { askAi, sendEarthquake, sendMassEarthquake, sendMessage, sendTargetedEarthquake } from "../socket";
 import { localDayRangeIso, parseMessageInput } from "../commands";
 import { buildAiFlowMap } from "../utils/aiMessageFlow";
@@ -40,7 +40,13 @@ export function ChatRoom({ room, currentUser, users, integrations, registerActiv
   const [mentionUsers, setMentionUsers] = useState<PublicUser[]>([]);
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const nearBottomRef = useRef(true);
+  const skipAutoScrollRef = useRef(false);
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior): void => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior });
+  }, []);
 
   const appendMessage = useCallback((msg: Message) => {
     setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
@@ -67,8 +73,9 @@ export function ChatRoom({ room, currentUser, users, integrations, registerActiv
       else next.add(payload.messageId);
       return next;
     });
-    if (nearBottomRef.current) requestAnimationFrame(() => scrollToBottom("smooth"));
-  }, []);
+    if (skipAutoScrollRef.current) return;
+    requestAnimationFrame(() => scrollToBottom("smooth"));
+  }, [scrollToBottom]);
 
   useEffect(() => {
     registerActiveHandler({ onMessage: appendMessage, onAiDelta: handleAiDelta });
@@ -79,20 +86,23 @@ export function ChatRoom({ room, currentUser, users, integrations, registerActiv
     let cancelled = false;
     setStreamingAiIds(new Set());
     setReplyTo(null);
+    skipAutoScrollRef.current = false;
     void (async () => {
       const page = await fetchMessages(room.id);
       if (cancelled) return;
       setMessages(page.messages);
       setHasMore(page.hasMore);
       setNextCursor(page.nextCursor);
-      requestAnimationFrame(() => scrollToBottom("auto"));
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => scrollToBottom("auto"));
+      });
       const last = page.messages[page.messages.length - 1];
       if (last) void markRoomRead(room.id, last.id).catch(() => undefined);
     })();
     return () => {
       cancelled = true;
     };
-  }, [room.id]);
+  }, [room.id, scrollToBottom]);
 
   useEffect(() => {
     let cancelled = false;
@@ -119,21 +129,20 @@ export function ChatRoom({ room, currentUser, users, integrations, registerActiv
   }, [room.id, room.type, users, currentUser.id]);
 
   useEffect(() => {
-    if (nearBottomRef.current) scrollToBottom("smooth");
-  }, [messages]);
-
-  function scrollToBottom(behavior: ScrollBehavior): void {
-    const el = scrollRef.current;
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior });
-  }
+    if (skipAutoScrollRef.current) {
+      skipAutoScrollRef.current = false;
+      return;
+    }
+    requestAnimationFrame(() => scrollToBottom("auto"));
+  }, [messages, scrollToBottom]);
 
   async function handleScroll(): Promise<void> {
     const el = scrollRef.current;
     if (!el) return;
-    nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
 
     if (el.scrollTop < 60 && hasMore && !loadingOlder && nextCursor) {
       setLoadingOlder(true);
+      skipAutoScrollRef.current = true;
       const prevHeight = el.scrollHeight;
       try {
         const page = await fetchMessages(room.id, nextCursor);
@@ -155,7 +164,7 @@ export function ChatRoom({ room, currentUser, users, integrations, registerActiv
    * 오류는 throw 하여 입력창에 표시된다.
    */
   async function handleSubmit(raw: string, replyToMessageId?: number): Promise<void> {
-    nearBottomRef.current = true;
+    skipAutoScrollRef.current = false;
     const parsed = parseMessageInput(raw, mentionUsers, room.type);
 
     // AI 전용 채팅방에서는 일반 텍스트도 AI 질문으로 처리
@@ -201,6 +210,12 @@ export function ChatRoom({ room, currentUser, users, integrations, registerActiv
         });
         return;
       }
+      case "month-schedule":
+        await fetchMonthScheduleForRoom({
+          roomId: room.id,
+          scope: "all",
+        });
+        return;
       case "rag-list":
         await fetchRagFileList(room.id);
         return;

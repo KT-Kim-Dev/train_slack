@@ -14,6 +14,7 @@ export type ParsedCommand =
   | { type: "build-run"; project: string }
   | { type: "build-status"; project: string }
   | { type: "calendar"; date: string }
+  | { type: "month-schedule" }
   | { type: "rag-list" }
   | { type: "earthquake" }
   | { type: "mass-earthquake" }
@@ -168,6 +169,16 @@ export function parseCommand(raw: string): ParsedCommand {
       return { type: "calendar", date: resolved };
     }
 
+    case "month-schedule":
+    case "monthcal":
+    case "한달일정":
+    case "한달일정보기": {
+      if (argStr) {
+        return { type: "error", message: "사용법: /한달일정" };
+      }
+      return { type: "month-schedule" };
+    }
+
     case "rag":
       if (argStr) return { type: "error", message: "사용법: /rag (RAG 폴더 파일 목록 조회)" };
       return { type: "rag-list" };
@@ -202,5 +213,6 @@ export const COMMAND_HINTS = [
   "/ai (질문)",
   "@ai (질문)",
   "/일정 [오늘|날짜]",
+  "/한달일정",
   "/calendar [오늘|날짜]",
 ];

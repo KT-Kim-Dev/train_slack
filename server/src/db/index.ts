@@ -277,6 +277,10 @@ function runMigrations(): void {
     logger.info("DB 마이그레이션: users.profile_image_path 추가");
     db.exec("ALTER TABLE users ADD COLUMN profile_image_path TEXT");
   }
+  if (!colNames.has("ignore_earthquake")) {
+    logger.info("DB 마이그레이션: users.ignore_earthquake 추가");
+    db.exec("ALTER TABLE users ADD COLUMN ignore_earthquake INTEGER NOT NULL DEFAULT 0");
+  }
 
   const calendarCols = db.prepare("PRAGMA table_info(calendar_events)").all() as { name: string }[];
   const calendarColNames = new Set(calendarCols.map((c) => c.name));

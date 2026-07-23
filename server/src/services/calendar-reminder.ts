@@ -6,7 +6,7 @@ import {
 import { logger } from "../logger.js";
 import { notifyCalendarEvent } from "../sockets/index.js";
 
-const POLL_INTERVAL_MS = 30_000;
+const POLL_INTERVAL_MS = 15_000;
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let ticking = false;
@@ -17,9 +17,9 @@ async function tickReminders(): Promise<void> {
   try {
     const due = listDueReminders();
     for (const event of due) {
-      markReminderSent(event.id);
       const targets = eventParticipantIds(event);
       notifyCalendarEvent("reminder", event, targets);
+      markReminderSent(event.id);
       logger.info("캘린더 리마인더 발송", {
         eventId: event.id,
         title: event.title,

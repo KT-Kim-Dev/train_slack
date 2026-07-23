@@ -201,6 +201,25 @@ export function insertTargetedEarthquakeSystemMessage(params: {
   return getMessageById(Number(result.lastInsertRowid))!;
 }
 
+/** 지진 무시 시스템 메시지 */
+export function insertEarthquakeIgnoredSystemMessage(params: {
+  roomId: number;
+  userId: number;
+}): Message {
+  const user = db.prepare("SELECT display_name FROM users WHERE id = ?").get(params.userId) as
+    | { display_name: string }
+    | undefined;
+  const displayName = user?.display_name ?? "알 수 없음";
+  const content = `[${displayName}]께서 지진발생을 무시하였습니다.`;
+
+  const result = db
+    .prepare(
+      "INSERT INTO messages (room_id, sender_id, message_type, content) VALUES (?, ?, 'system', ?)"
+    )
+    .run(params.roomId, params.userId, content);
+  return getMessageById(Number(result.lastInsertRowid))!;
+}
+
 export function insertTextMessage(params: {
   roomId: number;
   senderId: number;

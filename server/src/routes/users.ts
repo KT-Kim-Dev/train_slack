@@ -11,9 +11,11 @@ import { verifyToken } from "../auth/jwt.js";
 import { config } from "../config.js";
 import {
   getUserById,
+  getUserPreferences,
   listActiveUsers,
   setPresenceStatus,
   setProfileImagePath,
+  setUserPreferences,
   toPublicUser,
 } from "../db/users.js";
 import { broadcastUserUpdated } from "../sockets/index.js";
@@ -136,6 +138,25 @@ usersRouter.post("/me/avatar", (req: AuthedRequest, res) => {
     broadcastUserUpdated(publicUser);
     res.json(publicUser);
   });
+});
+
+/** 내 개인 설정 조회 */
+usersRouter.get("/me/preferences", (req: AuthedRequest, res) => {
+  res.json(getUserPreferences(req.auth!.userId));
+});
+
+/** 내 개인 설정 변경 */
+usersRouter.patch("/me/preferences", (req: AuthedRequest, res) => {
+  const schema = z.object({
+    ignoreEarthquake: z.boolean().optional(),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "설정 값이 올바르지 않습니다." });
+    return;
+  }
+  const prefs = setUserPreferences(req.auth!.userId, parsed.data);
+  res.json(prefs);
 });
 
 /** 사내 사용자 목록 (멤버 사이드바 / 채널 초대 / DM 대상) */

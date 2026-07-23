@@ -103,11 +103,10 @@ export function ChatPage({ currentUser, onLogout, onUserUpdated }: Props): JSX.E
     socket.on("connect", () => setConnectionError(null));
 
     socket.on("message:new", (message) => {
-      if (
-        mainViewRef.current === "chat" &&
-        message.roomId === selectedRoomIdRef.current &&
-        activeRoomHandler.current
-      ) {
+      const isActiveRoom =
+        mainViewRef.current === "chat" && message.roomId === selectedRoomIdRef.current;
+
+      if (isActiveRoom && activeRoomHandler.current) {
         activeRoomHandler.current.onMessage(message);
       } else {
         setRooms((prev) =>
@@ -115,13 +114,18 @@ export function ChatPage({ currentUser, onLogout, onUserUpdated }: Props): JSX.E
             r.id === message.roomId ? { ...r, unreadCount: (r.unreadCount ?? 0) + 1 } : r
           )
         );
+      }
 
-        if (message.senderId !== currentUserIdRef.current && message.messageType !== "system") {
-          const room = roomsRef.current.find((r) => r.id === message.roomId);
-          if (room && (room.type === "channel" || room.type === "dm" || room.type === "group")) {
-            const label = roomNotificationLabel(room, usersRef.current, currentUserIdRef.current);
-            notifyIncomingMessage({ room, message, roomLabel: label });
-          }
+      if (message.senderId !== currentUserIdRef.current && message.messageType !== "system") {
+        const room = roomsRef.current.find((r) => r.id === message.roomId);
+        if (room && (room.type === "channel" || room.type === "dm" || room.type === "group")) {
+          const label = roomNotificationLabel(room, usersRef.current, currentUserIdRef.current);
+          notifyIncomingMessage({
+            room,
+            message,
+            roomLabel: label,
+            skipInAppToast: isActiveRoom,
+          });
         }
       }
     });
@@ -135,6 +139,9 @@ export function ChatPage({ currentUser, onLogout, onUserUpdated }: Props): JSX.E
     socket.on("calendar:event", (payload: CalendarEventSocketPayload) => {
       setCalendarRefreshToken((n) => n + 1);
       notifyCalendarEvent(payload.action, payload.event);
+      if (payload.action === "reminder") {
+        void window.intraChat?.reminderShake?.({ eventId: payload.event.id });
+      }
     });
 
     socket.on("room:earthquake:shake", ({ roomId }) => {

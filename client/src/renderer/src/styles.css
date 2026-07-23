@@ -547,6 +547,20 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+.preference-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--text-primary);
+  cursor: pointer;
+  user-select: none;
+}
+.preference-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
 .status-options {
   display: flex;
   flex-direction: column;
@@ -1487,6 +1501,11 @@ body {
   margin-bottom: 8px;
   color: var(--text);
 }
+.schedule-card-count {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
 .schedule-list {
   list-style: none;
   margin: 0;
@@ -1494,6 +1513,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  max-height: 480px;
+  overflow-y: auto;
 }
 .schedule-list-item {
   padding: 8px 0 0;

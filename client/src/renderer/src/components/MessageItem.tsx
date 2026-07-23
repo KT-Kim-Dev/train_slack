@@ -377,7 +377,9 @@ function ScheduleCardView({ card }: { card: ScheduleCard }): JSX.Element {
       {card.events.length === 0 ? (
         <div className="card-title">등록된 일정이 없습니다.</div>
       ) : (
-        <ul className="schedule-list">
+        <>
+          <div className="schedule-card-count">{card.events.length}건</div>
+          <ul className="schedule-list">
           {card.events.map((ev) => (
             <li key={ev.id} className="schedule-list-item">
               <div className="schedule-item-title">{ev.title}</div>
@@ -393,7 +395,8 @@ function ScheduleCardView({ card }: { card: ScheduleCard }): JSX.Element {
               </div>
             </li>
           ))}
-        </ul>
+          </ul>
+        </>
       )}
     </div>
   );

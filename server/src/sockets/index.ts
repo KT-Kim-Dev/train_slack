@@ -10,10 +10,11 @@ import type {
   ServerToClientEvents,
 } from "@intra-chat/shared";
 import { verifyToken } from "../auth/jwt.js";
-import { getUserById, setOnline, toPublicUser } from "../db/users.js";
+import { getUserById, setOnline, toPublicUser, userIgnoresEarthquake } from "../db/users.js";
 import {
   getContextMessages,
   insertAiPlaceholder,
+  insertEarthquakeIgnoredSystemMessage,
   insertEarthquakeSystemMessage,
   insertMassEarthquakeSystemMessage,
   insertTargetedEarthquakeSystemMessage,
@@ -48,6 +49,19 @@ function emitEarthquakeShake(userIds: number[], roomId: number): void {
   const server = getIo();
   for (const targetId of userIds) {
     server.to(userChannel(targetId)).emit("room:earthquake:shake", { roomId });
+  }
+}
+
+/** 지진 대상별 처리 — 무시 설정 시 시스템 메시지, 아니면 창 흔들림 */
+function deliverEarthquakeEffects(roomId: number, targetUserIds: number[]): void {
+  for (const targetId of [...new Set(targetUserIds)]) {
+    if (userIgnoresEarthquake(targetId)) {
+      const message = insertEarthquakeIgnoredSystemMessage({ roomId, userId: targetId });
+      broadcastMessage(message);
+      scheduleRoomConversationExport(roomId);
+    } else {
+      emitEarthquakeShake([targetId], roomId);
+    }
   }
 }
 
@@ -281,7 +295,7 @@ export function initSocket(httpServer: HttpServer, corsOrigin: string[]): IOServ
 
       const peerId = getDmPeerId(roomId, userId);
       if (peerId) {
-        emitEarthquakeShake([peerId], roomId);
+        deliverEarthquakeEffects(roomId, [peerId]);
       }
 
       logger.info("DM 지진", { roomId, userId, messageId: message.id });
@@ -311,7 +325,7 @@ export function initSocket(httpServer: HttpServer, corsOrigin: string[]): IOServ
       scheduleRoomConversationExport(roomId);
 
       const targets = getActiveMemberIds(roomId, userId);
-      emitEarthquakeShake(targets, roomId);
+      deliverEarthquakeEffects(roomId, targets);
 
       logger.info("전체지진", { roomId, roomType: room.type, userId, targetCount: targets.length, messageId: message.id });
       ack?.({ ok: true, message });
@@ -355,7 +369,7 @@ export function initSocket(httpServer: HttpServer, corsOrigin: string[]): IOServ
       markRoomRead(roomId, userId, message.id);
       broadcastMessage(message);
       scheduleRoomConversationExport(roomId);
-      emitEarthquakeShake(validTargets, roomId);
+      deliverEarthquakeEffects(roomId, validTargets);
 
       logger.info("개별 지진", { roomId, userId, targetCount: validTargets.length, messageId: message.id });
       ack?.({ ok: true, message });

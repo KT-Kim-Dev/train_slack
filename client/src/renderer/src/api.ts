@@ -19,6 +19,7 @@ import type {
   RagSyncResult,
   Room,
   ScheduleCard,
+  UserPreferences,
   UserPresenceStatus,
 } from "@intra-chat/shared";
 import { SERVER_URL } from "./config";
@@ -109,6 +110,17 @@ export async function updateMyStatus(status: UserPresenceStatus): Promise<Public
   return request<PublicUser>("/api/users/me/status", {
     method: "PUT",
     body: JSON.stringify({ status }),
+  });
+}
+
+export async function fetchMyPreferences(): Promise<UserPreferences> {
+  return request<UserPreferences>("/api/users/me/preferences");
+}
+
+export async function updateMyPreferences(prefs: Partial<UserPreferences>): Promise<UserPreferences> {
+  return request<UserPreferences>("/api/users/me/preferences", {
+    method: "PATCH",
+    body: JSON.stringify(prefs),
   });
 }
 
@@ -352,9 +364,21 @@ export async function fetchScheduleForRoom(params: {
     date: params.date,
     from: params.from,
     to: params.to,
-    scope: params.scope ?? "mine",
+    scope: params.scope ?? "all",
   });
   return request<ScheduleCard>(`/api/calendar/schedule?${q.toString()}`);
+}
+
+/** 오늘~+30일 일정을 조회하고 채팅방에 카드로 게시 */
+export async function fetchMonthScheduleForRoom(params: {
+  roomId: number;
+  scope?: "mine" | "all";
+}): Promise<ScheduleCard> {
+  const q = new URLSearchParams({
+    roomId: String(params.roomId),
+    scope: params.scope ?? "all",
+  });
+  return request<ScheduleCard>(`/api/calendar/schedule/month30?${q.toString()}`);
 }
 
 /** /rag 명령 — RAG 폴더 파일 목록을 채팅방에 게시 */

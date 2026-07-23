@@ -9,6 +9,8 @@ interface NotifyParams {
   room: Room;
   message: Message;
   roomLabel: string;
+  /** 현재 보고 있는 방이면 인앱 토스트 생략 */
+  skipInAppToast?: boolean;
 }
 
 function previewText(message: Message): string {
@@ -17,12 +19,19 @@ function previewText(message: Message): string {
   return "새 메시지";
 }
 
-/** 앱 내 토스트(활성 창) + 트레이 토스트(비활성/최소화 시, 메인 프로세스) */
-export function notifyIncomingMessage({ room, message, roomLabel }: NotifyParams): void {
+/** 앱 내 토스트(활성 창) + 트레이 토스트 + 작업 표시줄 반짝임 */
+export function notifyIncomingMessage({
+  room,
+  message,
+  roomLabel,
+  skipInAppToast = false,
+}: NotifyParams): void {
   const body = `${message.senderName}: ${previewText(message)}`;
   const title = roomLabel;
 
-  pushToast({ title, body, target: { type: "room", roomId: room.id } });
+  if (!skipInAppToast) {
+    pushToast({ title, body, target: { type: "room", roomId: room.id } });
+  }
 
   if (window.intraChat?.showNotification) {
     void window.intraChat.showNotification({

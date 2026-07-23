@@ -122,6 +122,11 @@ export function listEventsForUser(params: {
   let sql: string;
   let args: unknown[];
 
+  const rangeClause =
+    !Number.isNaN(fromMs) && !Number.isNaN(toMs)
+      ? " AND e.start_at < ? AND e.end_at > ?"
+      : "";
+
   if (scope === "mine") {
     // 내가 만들었거나 / 참석자로 등록된 일정만
     sql = `${EVENT_SELECT}
@@ -131,7 +136,7 @@ export function listEventsForUser(params: {
             SELECT 1 FROM calendar_attendees a
             WHERE a.event_id = e.id AND a.user_id = ?
           )
-        )
+        )${rangeClause}
       ORDER BY e.start_at ASC, e.id ASC`;
     args = [userId, userId];
   } else {
@@ -144,21 +149,61 @@ export function listEventsForUser(params: {
             SELECT 1 FROM calendar_attendees a
             WHERE a.event_id = e.id AND a.user_id = ?
           )
-        )
+        )${rangeClause}
       ORDER BY e.start_at ASC, e.id ASC`;
     args = [userId, userId];
   }
 
+  if (rangeClause) {
+    args.push(to, from);
+  }
+
   const rows = db.prepare(sql).all(...args) as EventRow[];
-  return rows
-    .map(toEvent)
-    .filter((ev) => {
-      const start = Date.parse(ev.startAt);
-      const end = Date.parse(ev.endAt);
-      if (Number.isNaN(start) || Number.isNaN(end)) return false;
-      if (Number.isNaN(fromMs) || Number.isNaN(toMs)) return true;
-      return start < toMs && end > fromMs;
-    });
+  return rows.map(toEvent);
+}
+
+/** 로컬 날짜(YYYY-MM-DD) 하루에 걸치는 일정 (캘린더 UI와 동일 overlap 규칙) */
+export function listEventsTouchingLocalDay(params: {
+  userId: number;
+  ymd: string;
+  scope: "mine" | "all";
+}): CalendarEvent[] {
+  const dayStart = new Date(`${params.ymd}T00:00:00`);
+  const dayEnd = new Date(dayStart);
+  dayEnd.setDate(dayEnd.getDate() + 1);
+  return listEventsForUser({
+    userId: params.userId,
+    from: dayStart.toISOString(),
+    to: dayEnd.toISOString(),
+    scope: params.scope,
+  });
+}
+
+/** 오늘(로컬) 00:00 ~ +30일 23:59:59 까지 걸치는 일정 */
+export function listEventsForNext30Days(params: {
+  userId: number;
+  scope: "mine" | "all";
+  now?: Date;
+}): { events: CalendarEvent[]; fromDate: string; toDate: string } {
+  const today = params.now ?? new Date();
+  today.setHours(0, 0, 0, 0);
+  const rangeEnd = new Date(today);
+  rangeEnd.setDate(rangeEnd.getDate() + 31);
+
+  const pad2 = (n: number): string => String(n).padStart(2, "0");
+  const fromDate = `${today.getFullYear()}-${pad2(today.getMonth() + 1)}-${pad2(today.getDate())}`;
+  const lastInclusive = new Date(today);
+  lastInclusive.setDate(lastInclusive.getDate() + 30);
+  const toDate = `${lastInclusive.getFullYear()}-${pad2(lastInclusive.getMonth() + 1)}-${pad2(lastInclusive.getDate())}`;
+
+  const events = listEventsForUser({
+    userId: params.userId,
+    from: today.toISOString(),
+    to: rangeEnd.toISOString(),
+    scope: params.scope,
+  });
+
+  return { events, fromDate, toDate };
 }
 
 /** RAG schedule.csv 기록용 — 전체 일정 (시작 시각 순) */

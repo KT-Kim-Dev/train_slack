@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { PublicUser, UserPresenceStatus } from "@intra-chat/shared";
+import type { PublicUser, UserPresenceStatus, UserPreferences } from "@intra-chat/shared";
 import { db, AI_USERNAME } from "./index.js";
 import { config } from "../config.js";
 
@@ -14,6 +14,7 @@ export interface UserRow {
   last_seen: string | null;
   profile_image_path: string | null;
   presence_status: string;
+  ignore_earthquake?: number;
   created_at: string;
 }
 
@@ -102,4 +103,27 @@ export function setActive(userId: number, isActive: boolean): void {
 
 export function deleteUser(userId: number): void {
   db.prepare("DELETE FROM users WHERE id = ?").run(userId);
+}
+
+export function getUserPreferences(userId: number): UserPreferences {
+  const row = db
+    .prepare("SELECT ignore_earthquake FROM users WHERE id = ?")
+    .get(userId) as { ignore_earthquake: number } | undefined;
+  return {
+    ignoreEarthquake: row?.ignore_earthquake === 1,
+  };
+}
+
+export function setUserPreferences(userId: number, prefs: Partial<UserPreferences>): UserPreferences {
+  if (prefs.ignoreEarthquake !== undefined) {
+    db.prepare("UPDATE users SET ignore_earthquake = ? WHERE id = ?").run(
+      prefs.ignoreEarthquake ? 1 : 0,
+      userId
+    );
+  }
+  return getUserPreferences(userId);
+}
+
+export function userIgnoresEarthquake(userId: number): boolean {
+  return getUserPreferences(userId).ignoreEarthquake;
 }
